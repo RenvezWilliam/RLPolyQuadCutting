@@ -1,4 +1,3 @@
-
 import gmsh
 
 """"global value to indicate how to round floating numbers"""
@@ -171,6 +170,20 @@ def print_infos():
         print(" --> curves ", q.get_curves(f_tag))
         print(" --> points ", q.get_corners(f_tag))
 
+def create_shape(file):
+    # créer un tableau avec les différents rectangle inscrit sur le fichier et transforme le tout en int
+    lines = file.read().split('\n')
+    for i in range(len(lines)):
+        lines[i] = lines[i].split(',')
+        for j in range(len(lines[i])):
+            lines[i][j] = int(lines[i][j])
+    # print(lines)
+    # Créer tous les rectangles à partir du tableau obtenu juste avant
+    rectangles = []
+    for i in range(len(lines)):
+        rectangles.append(create_rectangle(lines[i][0], lines[i][1], lines[i][2], lines[i][3]))
+    del lines
+    return fuse(rectangles)
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
@@ -179,11 +192,11 @@ if __name__ == '__main__':
     # ======================================================
     # Create a first shape by assembling rectangles
     # ======================================================
-    r1 = create_rectangle(0, 0, 10, 10)
-    r2 = create_rectangle(5, 5, 10, 3)
-    r3 = create_rectangle(-5, 0, 7, 2)
-    ps = fuse([r1, r2, r3])
+    f = open("shape.txt", "r")
+    ps = create_shape(f)
+    f.close()
     print_infos()
+
     ## Cut from point 13, face 2 in direction 3 (east)
     cut(13, 2, 3)
     print_infos()
@@ -194,4 +207,3 @@ if __name__ == '__main__':
     remesh()
     gmsh.write("mesh_gmsh.vtk")
     finalize()
-
