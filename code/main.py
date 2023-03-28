@@ -139,7 +139,7 @@ def cut(point_tag, face_tag, dir):
         if len(gmsh.model.getAdjacencies(1, e)[0]) == 0:
             gmsh.model.occ.remove([(1, e)], True)
     gmsh.model.occ.synchronize()
-
+    return to_infinity
 
 def finalize():
     """ Finalize the gmsh call """
@@ -170,6 +170,9 @@ def print_infos():
         print(" --> curves ", q.get_curves(f_tag))
         print(" --> points ", q.get_corners(f_tag))
 
+
+#===Mes ajouts===#
+
 def create_shape(file):
     # créer un tableau avec les différents rectangle inscrit sur le fichier et transforme le tout en int
     lines = file.read().split('\n')
@@ -185,25 +188,145 @@ def create_shape(file):
     del lines
     return fuse(rectangles)
 
+def glouton():
+    all_faces_has_four_points = True
+    for f_tag in get_face_tags():
+        q = Query()
+        points = q.get_corners(f_tag)
+
+        if points != 4:
+
+            all_faces_has_four_points = False
+
+            for p in points:
+                for i in range(4):
+                    j = i + 1
+                    if can_cut(p, f_tag, j):
+                        print("success")
+                        print(p, f_tag, j)
+
+                        cut(p, f_tag, j)
+                        break
+                    break
+                break
+
+    if not all_faces_has_four_points:
+        glouton()
+
+def can_cut(point, f_tag, dir):
+    # En utilisant le point et le f_tag, on cherche à voir s'il y a une curve adjaçant au point dans la même direction.
+    """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
+    q = Query()
+    cs = q.get_curves(f_tag)
+    curves = []
+
+    # On récupère tous les segments contenant le point utilisé
+    for c in cs:
+        ps = get_end_points(c)
+        if point in ps:
+            curves.append(c)
+
+    # Check si le coupage a déjà été fait
+    for c in curves:
+        point_to_check = None
+        other_point = None
+        for p in get_end_points(c):
+            if p == point:
+                point_to_check = point_coordinate(p) # Coordonnées du point utilisé
+            else:
+                other_point = point_coordinate(p) # Coordonnées de l'autre point du segment
+        if dir == 1:
+            if point_to_check[1] < other_point[1]:
+                return False
+        if dir == 2:
+            if point_to_check[1] > other_point[1]:
+                return False
+        if dir == 3:
+            if point_to_check[0] > other_point[0]:
+                return False
+        if dir == 4:
+            if point_to_check[0] < other_point[0]:
+                return False
+
+    # La découpe n'a jamais été faite, super.
+    # Est-ce que dans la direction dans laquelle on veut couper se trouve un segment ?
+    #
+
+    all_curves = get_edge_tags()
+    print(point)
+    print(get_point_tags())
+    print(f_tag)
+    cpoint = point_coordinate(point)
+    for c in all_curves:
+        pts = get_end_points(c)
+        cpts1 = point_coordinate(pts[0])
+        cpts2 = point_coordinate(pts[1])
+
+        if dir == 1:
+            if not (cpoint[1] < cpts1[1] and cpoint[1] < cpts2[1]):
+                continue
+
+            if not (cpts1[0] <= cpoint[0] <= cpts2[0]) or (cpts1[0] >= cpoint[0] >= cpts2[0]):
+                continue
+            return True
+
+        if dir == 2:
+            if not (cpoint[1] > cpts1[1] and cpoint[1] > cpts2[1]):
+                continue
+
+            if not (cpts1[0] <= cpoint[0] <= cpts2[0]) or (cpts1[0] >= cpoint[0] >= cpts2[0]):
+                continue
+
+            return True
+
+        if dir == 3:
+            if not (cpoint[0] > cpts1[0] and cpoint[0] > cpts2[0]):
+                continue
+
+            if not (cpts1[1] <= cpoint[1] <= cpts2[1]) or (cpts1[1] >= cpoint[1] >= cpts2[1]):
+                continue
+
+            return True
+
+        if dir == 4:
+            if not (cpoint[0] < cpts1[0] and cpoint[0] < cpts2[0]):
+                continue
+
+            if not (cpts1[1] <= cpoint[1] <= cpts2[1]) or (cpts1[1] >= cpoint[1] >= cpts2[1]):
+                continue
+
+            return True
+
+    return False
+
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
+    """Probleme de récursion à régler"""
+
     # first, we initialize the gmsh environment
     initialize()
     # ======================================================
     # Create a first shape by assembling rectangles
     # ======================================================
-    f = open("shape.txt", "r")
+    file_name = "shape.txt"
+    f = open(file_name, "r")
     ps = create_shape(f)
     f.close()
-    print_infos()
+    #print_infos()
 
     ## Cut from point 13, face 2 in direction 3 (east)
-    cut(13, 2, 3)
-    print_infos()
+    # cut(13, 2, 3)
+    #print_infos()
     ## Cut from point 3, face 1 in direction 2 (south)
-    cut(3, 1, 2)
-    print_infos()
+    # cut(3, 1, 2)
+    #print_infos()
+
+    glouton()
+
     ## final meshing
     remesh()
     gmsh.write("mesh_gmsh.vtk")
     finalize()
+
