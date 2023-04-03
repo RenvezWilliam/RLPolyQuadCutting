@@ -1,4 +1,5 @@
 import gmsh
+from math import *
 
 """"global value to indicate how to round floating numbers"""
 nb_digit_rounding = 4
@@ -235,7 +236,66 @@ def launch():
             print("Erreur, n'a pas coupé vers la direction", last_val)
         last_val = last
 
+    print("score =", get_score())
 
+def get_x(point_tag):
+    # renvoi la coordoné sur x d'un point
+    no_parametrization = []
+    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
+    return x
+
+def get_y(point_tag):
+    # renvoi la coordoné sur y d'un point
+    no_parametrization = []
+    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
+    return y
+
+def get_z(point_tag):
+    # renvoi la coordoné sur z d'un point
+    no_parametrization = []
+    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
+    return z
+
+def get_dist(point_tag1, point_tag2):
+    #renvoi la distance entre 2 points
+
+    return sqrt((get_x(point_tag1)-get_x(point_tag2))**2 + (get_y(point_tag1)-get_y(point_tag2))**2)
+
+def get_dir(point_tag1, point_tag2):
+    #renvoi la direction d'un pooint 2 par rapport a un point 1
+    """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
+
+    no_parametrization = []
+    [x1, y1, z1] = gmsh.model.getValue(0, point_tag1, no_parametrization)
+
+    no_parametrization = []
+    [x2, y2, z2] = gmsh.model.getValue(0, point_tag2, no_parametrization)
+
+    if y2 > y1:
+        return 1
+
+    if y1 > y2:
+        return 2
+
+    if x2 > x1:
+        return 3
+
+    if x1 > x2:
+        return 4
+
+    return False
+
+def get_score():
+    q = Query()
+    ratio = 0
+    for f_tag in get_face_tags():
+        points = q.get_corners(f_tag)
+
+        ratio = ratio + abs(get_dist(points[0], points[1]) - get_dist(points[1], points[2]))
+
+    ratio = ratio / len(get_face_tags())
+
+    return ratio
 
 
 def can_cut(point, f_tag):
@@ -347,6 +407,7 @@ if __name__ == '__main__':
     # print_infos()
 
     launch()
+
 
     ## final meshing
     remesh()
