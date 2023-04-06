@@ -222,85 +222,49 @@ def glouton():
 def can_cut(point, f_tag):
     # En utilisant le point et le f_tag, on cherche à voir s'il y a une curve adjaçant au point dans la même direction.
     """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
-    q = Query()
-    cs = get_edge_tags()
-    curves = []
-
-    # On récupère tous les segments contenant le point utilisé
-    for c in cs:
-        ps = get_end_points(c)
-        if point in ps:
-            curves.append(c)
-
-    directions = [1, 2, 3, 4]
-
-    # Check si le coupage a déjà été fait
-    for c in curves:
-        point_to_check = None
-        other_point = None
-        for p in get_end_points(c):
-            if p == point:
-                point_to_check = point_coordinate(p)  # Coordonnées du point utilisé
-            else:
-                other_point = point_coordinate(p)  # Coordonnées de l'autre point du segment
-
-        #
-        # On retire directions dont les découpes qui ont déjà été faites
-        #
-
-        if point_to_check[1] < other_point[1]:
-            directions.remove(1)
-        if point_to_check[1] > other_point[1]:
-            directions.remove(2)
-        if point_to_check[0] < other_point[0]:
-            directions.remove(3)
-        if point_to_check[0] > other_point[0]:
-            directions.remove(4)
-
-    #
-    # Avec les directions restante, on regarde lesquelles on peut garder
-    #
 
     all_curves = get_edge_tags()
     c_point = point_coordinate(point)
     returned_value = []
+    value = []
 
     for c in all_curves:
         pts = get_end_points(c)
         cpts1 = point_coordinate(pts[0])
         cpts2 = point_coordinate(pts[1])
 
-        if not (c_point == cpts1 or c_point == cpts2):
+        #   Nord
+        if cpts1[1] > c_point[1] and cpts2[1] > c_point[1] and (
+                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
+            value.append(1)
 
-            for d in directions:
-                if d == 1:
-                    if not (c_point[1] < cpts1[1] and c_point[1] < cpts2[1]):
-                        continue
+        #   Sud
+        if cpts1[1] < c_point[1] and cpts2[1] < c_point[1] and (
+                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
+            value.append(2)
 
-                    if (cpts1[0] <= c_point[0] <= cpts2[0]) or (cpts1[0] >= c_point[0] >= cpts2[0]):
-                        returned_value.append(1)
+        #   Est
+        if cpts1[0] > c_point[0] and cpts2[0] > c_point[0] and (
+                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
+            value.append(3)
 
+        #   Ouest
+        if cpts1[0] < c_point[0] and cpts2[0] < c_point[0] and (
+                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
+            value.append(4)
 
-                if d == 2:
-                    if not (c_point[1] > cpts1[1] and c_point[1] > cpts2[1]):
-                        continue
+    #   Suprimme les doublons
 
-                    if (cpts1[0] <= c_point[0] <= cpts2[0]) or (cpts1[0] >= c_point[0] >= cpts2[0]):
-                        returned_value.append(2)
+    for v in value:
+        if not v in returned_value:
+            returned_value.append(v)
 
-                if d == 3:
-                    if not (c_point[0] < cpts1[0] and c_point[0] < cpts2[0]):
-                        continue
-
-                    if (cpts1[1] <= c_point[1] <= cpts2[1]) or (cpts1[1] >= c_point[1] >= cpts2[1]):
-                        returned_value.append(3)
-
-                if d == 4:
-                    if not (c_point[0] > cpts1[0] and c_point[0] > cpts2[0]):
-                        continue
-
-                    if (cpts1[1] <= c_point[1] <= cpts2[1]) or (cpts1[1] >= c_point[1] >= cpts2[1]):
-                        returned_value.append(4)
+    for c in all_curves:
+        pts = get_end_points(c)
+        if point == pts[0]:
+            returned_value.remove(get_dir(point, pts[1]))
+        elif point == pts[1]:
+            returned_value.remove(get_dir(point, pts[0]))
 
     return returned_value
 
@@ -353,6 +317,17 @@ def get_dir(point_tag1, point_tag2):
 
     return False
 
+def get_nb_summit(f_tag):
+    q = Query()
+    points = q.get_corners(f_tag)
+    curve = {}
+    points2 = points
+
+    for point in points:
+        curve[get_x(point)] = 1
+        curve[get_y(point)] = 1
+
+    return len(curve)
 
 
 def Q_Learning_train(RatioMin, gain, NBegal):
@@ -364,8 +339,11 @@ def Q_Learning_train(RatioMin, gain, NBegal):
 
     NBProcess = 1
 
-    while continuer:
+    random.seed(2)
 
+    while continuer:
+        #print("CONTINUER")
+        gmsh.clear()
         r1 = create_rectangle(0, 0, 10, 10)
         r2 = create_rectangle(5, 5, 10, 3)
         r3 = create_rectangle(-5, 0, 7, 2)
@@ -379,7 +357,8 @@ def Q_Learning_train(RatioMin, gain, NBegal):
 
         ref = ""
         bcl = 0
-        while all_faces_has_not_four_points:
+        while all_faces_has_not_four_points and nb !=10:
+            nb+=1
             all_faces_has_not_four_points = False
             Face = zeros(len(get_face_tags()), int)
             i = 0
@@ -388,14 +367,17 @@ def Q_Learning_train(RatioMin, gain, NBegal):
 
             for f_tag in get_face_tags():
 
-                points = q.get_corners(f_tag)
+                NBSummit = get_nb_summit(f_tag)
+                print("face: ", f_tag, ", ", NBSummit, " points")
+                if NBSummit != 4:
 
-                if points != 4:
                     Face[i] = f_tag
                     i+=1
 
             if not len(Face) == 0:
                 all_faces_has_not_four_points = True
+
+
 
                 #determine la ref corespondant a la situation actuel
                 for j in range(i):
@@ -460,31 +442,59 @@ def Q_Learning_train(RatioMin, gain, NBegal):
                     for i in range(taille):
                         Data[ref][i] = 1.0 / taille
 
-                r = random.randint(0, 99)
-                j = 0
+                PointInvalide = True
 
-                if len(points) == 0:
-                    print("erreur")
-                    return False
+                RefFace = ref
 
-                for i in range(len(points)):
-                    j = j + (Data[ref][i] * 100)
-                    if r < j:
-                        p = points[i]
-                        print("Séléction du point: ", p)
-                        ListeAction[ref] = i
-                        ListeRef.append(ref)
-                        break
-                ref = ""
-                if i+1 == len(points):
-                    ref = ref + str(get_dir(p, points[i-1])) + "/" + str(get_dist(p, points[i-1])) \
-                          + "/" + str(get_dir(p, points[0])) + "/" + str(get_dist(p, points[0]))
-                elif i == 0:
-                    ref = ref + str(get_dir(p, points[len(points)-1])) + "/" + str(get_dist(p, points[len(points)-1])) \
-                          + "/" + str(get_dir(p, points[i+1])) + "/" + str(get_dist(p, points[i+1]))
-                else:
-                    ref = ref + str(get_dir(p, points[i-1])) + "/" + str(get_dist(p, points[i-1])) \
-                          + "/" + str(get_dir(p, points[i + 1])) + "/" + str(get_dist(p, points[i + 1]))
+                while PointInvalide:
+                    r = random.randint(0, 99)
+                    j = 0
+
+                    for i in range(len(points)):
+                        j = j + (Data[RefFace][i] * 100)
+                        pb = Data[RefFace][i]
+                        if r < j:
+                            p = points[i]
+                            print("Séléction du point: ", p)
+                            ListeAction[RefFace] = i
+                            ListeRef.append(RefFace)
+
+                            ref = ""
+
+                            all_curves = get_edge_tags()
+
+                            for c in all_curves:
+                                pts = get_end_points(c)
+
+                                if p == pts[0]:
+                                    ref = ref + str(get_dir(p, pts[1])) + "/" + str(get_dist(p, pts[1]))
+
+                                if p == pts[1]:
+                                    ref = ref + str(get_dir(p, pts[0])) + "/" + str(get_dist(p, pts[0]))
+
+                            PointInvalide = False
+
+                            # si le point ne peux pas être utilisé pour couper passe la broba de tomber dessu a 0 et choisi un autre point
+
+                            if ref in Data:
+                                PointInvalide = True
+                                for d in Data[ref]:
+                                    if d != 0:
+                                        PointInvalide = False
+
+                                if PointInvalide:
+                                    Data[RefFace][i] = 0
+                                    c = 0
+                                    for f in Data[RefFace]:
+                                        if f != 0:
+                                            c += 1
+                                    for f in Data[RefFace]:
+                                        if f != 0:
+                                            f = f + (pb/c)
+                                    if c == 0:
+                                        PointInvalide = False
+                            break
+
 
                 print(ref)
                 #direction segment 1 (0,1,2,3) / taille segment 1 / direction segment 2 (0,1,2,3) / taille segment 2
@@ -492,39 +502,13 @@ def Q_Learning_train(RatioMin, gain, NBegal):
                 if not ref in Data:
                     # initialisation des donnees 1 (north), 2 (south), 3 (east), 4 (west)
                     Data[ref] = [0.0, 0.0, 0.0, 0.0]
-                    test = 0
-                    """for i in range(4):
-                        j = i + 1
 
-                        print(j, " ", can_cut(p, f_tag, j))
-                        if can_cut(p, f_tag, j):
-                            # 1 (north), 2 (south), 3 (east), 4 (west)
-                            Data[ref][i] = 0.5
-                            test += 1"""
+                    CanCut = can_cut(p, f_tag)
+                    for var in CanCut:
+                        Data[ref][var-1] = 1/len(CanCut)
 
 
-                    """if can_cut(p, f_tag, 1):
-                        # 1 (north), 2 (south), 3 (east), 4 (west)
-                        Data[ref][0] = 0.5
-                        test += 1
-                    if can_cut(p, f_tag, 2):
-                        # 1 (north), 2 (south), 3 (east), 4 (west)
-                        Data[ref][1] = 0.5
-                        test += 1
-                    if can_cut(p, f_tag, 3):
-                        # 1 (north), 2 (south), 3 (east), 4 (west)
-                        Data[ref][3] = 0.5
-                        test += 1
-                    if can_cut(p, f_tag, 4):
-                        # 1 (north), 2 (south), 3 (east), 4 (west)
-                        Data[ref][2] = 0.5
-                        test += 1"""
-
-                    for var in can_cut(p, f_tag):
-                        Data[ref][var-1] = 0.5
-
-
-                print("Nombre de cut possible: ", test)
+                print("Nombre de cut possible: ", len(CanCut))
                 # cut aléatoirement en fonction des proba renseigner dans Data
                 r = random.randint(0, 99)
                 j = 0
@@ -537,12 +521,10 @@ def Q_Learning_train(RatioMin, gain, NBegal):
                     if r < j:
                         #1 (north), 2 (south), 3 (east), 4 (west)
 
-                        cut(p, f_tag, i+1)
-                        print("cut ", i+1)
+                        #cut(p, f_tag, i+1)
+                        print("cut ", i+1, ", ",cut(p, f_tag, i+1))
                         ListeAction[ref] = i
                         ListeRef.append(ref)
-
-                        nb+=1
                         break
 
         # calcul ratio résultat et attribution des récompenses
@@ -590,10 +572,7 @@ def Q_Learning_train(RatioMin, gain, NBegal):
                         else:
                             Data[ref][i] = Data[ref][i] + (gain / n - 1)
 
-        nb = nb+1
 
-        if nb == 2:
-            all_faces_has_not_four_points = False
         #condition continuer
         continuer = False
         print("Fin process ", NBProcess)
