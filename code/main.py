@@ -175,6 +175,23 @@ def print_infos():
 
 # ===Mes ajouts===#
 
+def is_on_a_face(point, direction):
+
+    point_test = None
+    coord = point_coordinate(point)
+    if direction == 1:
+        point_test = (coord[0], coord[1] + 0.5)
+    elif direction == 2:
+        point_test = (coord[0], coord[1] - 0.5)
+    elif direction == 3:
+        point_test = (coord[1] + 0.5, coord[1])
+    elif direction == 4:
+        point_test = (coord[1] - 0.5, coord[1])
+
+    surfaces = get_face_tags()
+
+    return True
+
 def create_shape(file):
     # créer un tableau avec les différents rectangle inscrit sur le fichier et transforme le tout en int
     lines = file.read().split('\n')
@@ -204,13 +221,13 @@ def glouton():
         all_faces_has_four_points = False
 
         corners = q.get_corners(f_tag)
-        print("points : ", corners, " | f_tag : ", f_tag)
+        # print("points : ", corners, " | f_tag : ", f_tag)
         for corner in corners:
             dir_to_cut = can_cut(corner, f_tag)
-            print("Point :", corner, "Face :", f_tag, "directions possible :", dir_to_cut)
+            # print("Point :", corner, "Face :", f_tag, "directions possible :", dir_to_cut)
             if len(dir_to_cut) == 0:
                 continue
-            print("cuting", "point :", corner, "dir :", dir_to_cut[0])
+            # print("cuting", "point :", corner, "dir :", dir_to_cut[0])
             cut(corner, f_tag, dir_to_cut[0])
 
             last_value = (corner, dir_to_cut, f_tag)
@@ -237,6 +254,7 @@ def launch():
         last_val = last
 
     print("score =", get_score())
+    # print(is_on_a_face(11, 1))
 
 def get_x(point_tag):
     # renvoi la coordoné sur x d'un point
@@ -297,8 +315,59 @@ def get_score():
 
     return ratio
 
-
 def can_cut(point, f_tag):
+    # En utilisant le point et le f_tag, on cherche à voir s'il y a une curve adjaçant au point dans la même direction.
+    """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
+    q = Query()
+    all_curves = q.get_curves(f_tag)
+    c_point = point_coordinate(point)
+    returned_value = []
+    value = []
+
+    for c in all_curves:
+        pts = get_end_points(c)
+        cpts1 = point_coordinate(pts[0])
+        cpts2 = point_coordinate(pts[1])
+
+        #   Nord
+        if cpts1[1] > c_point[1] and cpts2[1] > c_point[1] and (
+                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
+            value.append(1)
+
+        #   Sud
+        if cpts1[1] < c_point[1] and cpts2[1] < c_point[1] and (
+                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
+            value.append(2)
+
+        #   Est
+        if cpts1[0] > c_point[0] and cpts2[0] > c_point[0] and (
+                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
+            value.append(3)
+
+        #   Ouest
+        if cpts1[0] < c_point[0] and cpts2[0] < c_point[0] and (
+                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
+            value.append(4)
+
+    #   Suprimme les doublons
+
+    for v in value:
+        if not v in returned_value:
+            returned_value.append(v)
+
+    for c in all_curves:
+        pts = get_end_points(c)
+        if point == pts[0]:
+            if get_dir(point, pts[1]) in returned_value:
+                returned_value.remove(get_dir(point, pts[1]))
+        elif point == pts[1]:
+            if get_dir(point, pts[0]) in returned_value:
+                returned_value.remove(get_dir(point, pts[0]))
+
+    return returned_value
+
+
+def old_can_cut(point, f_tag):
     # En utilisant le point et le f_tag, on cherche à voir s'il y a une curve adjaçant au point dans la même direction.
     """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
     q = Query()
@@ -328,13 +397,17 @@ def can_cut(point, f_tag):
         #
 
         if point_to_check[1] < other_point[1]:
-            directions.remove(1)
+            if 1 in directions:
+                directions.remove(1)
         if point_to_check[1] > other_point[1]:
-            directions.remove(2)
+            if 2 in directions:
+                directions.remove(2)
         if point_to_check[0] < other_point[0]:
-            directions.remove(3)
+            if 3 in directions:
+                directions.remove(3)
         if point_to_check[0] > other_point[0]:
-            directions.remove(4)
+            if 4 in directions:
+                directions.remove(4)
 
     #
     # Avec les directions restante, on regarde lesquelles on peut garder
@@ -393,11 +466,11 @@ if __name__ == '__main__':
     # ======================================================
     # Create a first shape by assembling rectangles
     # ======================================================
-    file_name = "shape.txt"
+    file_name = "shape_21.txt"
     f = open(file_name, "r")
     ps = create_shape(f)
     f.close()
-    # print_infos()
+    #print_infos()
 
     ## Cut from point 13, face 2 in direction 3 (east)
     # cut(13, 2, 3)
@@ -407,6 +480,7 @@ if __name__ == '__main__':
     # print_infos()
 
     launch()
+    print_infos()
 
 
     ## final meshing
