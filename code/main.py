@@ -177,10 +177,52 @@ def print_infos():
 
 # === Mes ajouts === #
 
+def is_a_rectangle(f_tag, print_info = False):
+    q = Query()
+
+    points = q.get_corners(f_tag)
+
+    min_x = point_coordinate(points[0])[0]
+    min_y = point_coordinate(points[0])[1]
+    max_x = point_coordinate(points[0])[0]
+    max_y = point_coordinate(points[0])[1]
+
+    # Obtiens les valeurs minimums et maximums de x et y
+
+    for p in points:
+        if min_x > point_coordinate(p)[0]:
+            min_x = point_coordinate(p)[0]
+        if min_y > point_coordinate(p)[1]:
+            min_y = point_coordinate(p)[1]
+        if max_x < point_coordinate(p)[0]:
+            min_x = point_coordinate(p)[0]
+        if max_y < point_coordinate(p)[1]:
+            min_y = point_coordinate(p)[1]
+
+    # Maintenant qu'on à les valeurs minimums, on regarde si tous les points de la figure contiennent au moins une des
+    # valeurs, si ce n'est pas le cas, ce n'est pas un rectangle.
+
+    if print_info:
+        print("-=-=-= Info =-=-=-")
+        print("min_x :", min_x)
+        print("min_y :", min_y)
+        print("max_x :", max_x)
+        print("max_y :", max_y)
+        print("------------")
+        for p in points:
+            print("point trouvé à", point_coordinate(p))
+
+    for p in points:
+        if min_x == point_coordinate(p)[0] or min_y == point_coordinate(p)[1] or max_x == point_coordinate(p)[0] or max_y == point_coordinate(p)[1]:
+            continue
+        return False
+
+    return True
+
+
 def is_on_a_face(point, direction, f_tag):
 
     q = Query()
-    test = False
     point_test = None
     coord = point_coordinate(point)
     if direction == 1:
@@ -198,7 +240,7 @@ def is_on_a_face(point, direction, f_tag):
     for p in points:
         coords.append(point_coordinate(p))
 
-    point = Point((point_test))
+    point = Point(point_test)
     polygon = Polygon(coords)
 
     return polygon.covers(point), polygon.contains(point)
@@ -227,7 +269,10 @@ def glouton():
 
     for f_tag in get_face_tags():
 
-        if len(q.get_corners(f_tag)) == 4:
+        """if len(q.get_corners(f_tag)) == 4:
+            continue"""
+
+        if is_a_rectangle(f_tag):
             continue
 
         all_faces_has_four_points = False
@@ -344,7 +389,7 @@ if __name__ == '__main__':
     # ======================================================
     # Create a first shape by assembling rectangles
     # ======================================================
-    file_name = "shape_28.txt"
+    file_name = "shape_18.txt"
     f = open(file_name, "r")
     ps = create_shape(f)
     f.close()
