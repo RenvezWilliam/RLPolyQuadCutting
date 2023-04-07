@@ -1,3 +1,6 @@
+import random
+import sys
+
 import gmsh
 from math import *
 from shapely.geometry import Point
@@ -177,7 +180,7 @@ def print_infos():
 
 # === Mes ajouts === #
 
-def is_a_rectangle(f_tag, print_info = False):
+def is_a_rectangle(f_tag, print_info=False):
     q = Query()
 
     points = q.get_corners(f_tag)
@@ -195,15 +198,16 @@ def is_a_rectangle(f_tag, print_info = False):
         if min_y > point_coordinate(p)[1]:
             min_y = point_coordinate(p)[1]
         if max_x < point_coordinate(p)[0]:
-            min_x = point_coordinate(p)[0]
+            max_x = point_coordinate(p)[0]
         if max_y < point_coordinate(p)[1]:
-            min_y = point_coordinate(p)[1]
+            max_y = point_coordinate(p)[1]
 
     # Maintenant qu'on à les valeurs minimums, on regarde si tous les points de la figure contiennent au moins une des
     # valeurs, si ce n'est pas le cas, ce n'est pas un rectangle.
 
     if print_info:
         print("-=-=-= Info =-=-=-")
+        print("f_tag :", f_tag)
         print("min_x :", min_x)
         print("min_y :", min_y)
         print("max_x :", max_x)
@@ -221,7 +225,6 @@ def is_a_rectangle(f_tag, print_info = False):
 
 
 def is_on_a_face(point, direction, f_tag):
-
     q = Query()
     point_test = None
     coord = point_coordinate(point)
@@ -262,54 +265,46 @@ def create_shape(file):
     return fuse(rectangles)
 
 
-def glouton():
-    all_faces_has_four_points = True
+def algo():
+    # Récupère la surface initiale
+    faces = get_face_tags()
+
+    while faces:
+        f = random.choice(faces)  # Prend une face aléatoirement
+        points_candidats = get_cutable_pts(f)  # Récupère les points candidats pour être coupé
+        p = random.choice(points_candidats)  # Récupère un point
+        c = random.choice(can_cut(p, f))  # Récupère une découpe possible
+
+        cut(p, f, c)  # Fait la découpe
+
+        faces = get_all_non_square_faces()
+
+
+def get_all_non_square_faces():
+    values = []
+    faces = get_face_tags()
+    print("-=-=-=-=-=-")
+    for f in faces:
+        print(f, "is a rectangle :", is_a_rectangle(f))
+        if not is_a_rectangle(f):
+            values.append(f)
+    return values
+
+
+def get_cutable_pts(f_tag):
     q = Query()
-    last_value = None
+    pts_list = q.get_corners(f_tag)
+    values = []
 
-    for f_tag in get_face_tags():
+    for p in pts_list:
+        if can_cut(p, f_tag):
+            values.append(p)
 
-        """if len(q.get_corners(f_tag)) == 4:
-            continue"""
-
-        if is_a_rectangle(f_tag):
-            continue
-
-        all_faces_has_four_points = False
-
-        corners = q.get_corners(f_tag)
-        # print("points : ", corners, " | f_tag : ", f_tag)
-        for corner in corners:
-            dir_to_cut = can_cut(corner, f_tag)
-            # print("Point :", corner, "Face :", f_tag, "directions possible :", dir_to_cut)
-            if len(dir_to_cut) == 0:
-                continue
-            # print("cuting", "point :", corner, "dir :", dir_to_cut[0])
-            cut(corner, f_tag, dir_to_cut[0])
-
-            last_value = (corner, dir_to_cut, f_tag)
-
-            break
-        break
-
-    return all_faces_has_four_points, last_value
+    return values
 
 
 def launch():
-    test = False
-    last_val = None
-
-    """for i in range(10):
-        glouton()"""
-
-    while not test:
-        test, last = glouton()
-
-        if last == last_val:
-            test = True
-            print("Erreur, n'a pas coupé vers la direction", last_val)
-        last_val = last
-
+    algo()
     print("score =", get_score())
 
 def get_x(point_tag):
@@ -318,11 +313,13 @@ def get_x(point_tag):
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return x
 
+
 def get_y(point_tag):
     # renvoi la coordoné sur y d'un point
     no_parametrization = []
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return y
+
 
 def get_z(point_tag):
     # renvoi la coordoné sur z d'un point
@@ -330,13 +327,15 @@ def get_z(point_tag):
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return z
 
-def get_dist(point_tag1, point_tag2):
-    #renvoi la distance entre 2 points
 
-    return sqrt((get_x(point_tag1)-get_x(point_tag2))**2 + (get_y(point_tag1)-get_y(point_tag2))**2)
+def get_dist(point_tag1, point_tag2):
+    # renvoi la distance entre 2 points
+
+    return sqrt((get_x(point_tag1) - get_x(point_tag2)) ** 2 + (get_y(point_tag1) - get_y(point_tag2)) ** 2)
+
 
 def get_dir(point_tag1, point_tag2):
-    #renvoi la direction d'un pooint 2 par rapport a un point 1
+    # renvoi la direction d'un pooint 2 par rapport a un point 1
     """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
 
     no_parametrization = []
@@ -359,6 +358,7 @@ def get_dir(point_tag1, point_tag2):
 
     return False
 
+
 def get_score():
     q = Query()
     ratio = 0
@@ -380,6 +380,7 @@ def can_cut(point, f_tag):
             dir.append(j)
     return dir
 
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     """Probleme de récursion à régler"""
@@ -389,11 +390,11 @@ if __name__ == '__main__':
     # ======================================================
     # Create a first shape by assembling rectangles
     # ======================================================
-    file_name = "shape_18.txt"
+    file_name = "shape_17.txt"
     f = open(file_name, "r")
     ps = create_shape(f)
     f.close()
-    #print_infos()
+    # print_infos()
 
     ## Cut from point 13, face 2 in direction 3 (east)
     # cut(13, 2, 3)
@@ -403,8 +404,7 @@ if __name__ == '__main__':
     # print_infos()
 
     launch()
-    #print_infos()
-
+    # print_infos()
 
     ## final meshing
     remesh()
