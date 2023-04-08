@@ -293,6 +293,18 @@ def get_all_non_square_faces():
             values.append(f)
     return values
 
+def get_nb_summit(f_tag):
+    q = Query()
+    points = q.get_corners(f_tag)
+    curve = {}
+    points2 = points
+
+    for point in points:
+        curve[get_x(point)] = 1
+        curve[get_y(point)] = 1
+
+    return len(curve)
+
 
 def get_cutable_pts(f_tag):
     q = Query()
@@ -366,7 +378,7 @@ def get_score():
     q = Query()
     ratio = 0
     for f_tag in get_face_tags():
-        points = q.get_corners(f_tag)
+        points = get_nb_summit(f_tag)
 
         ratio = ratio + abs(get_dist(points[0], points[1]) - get_dist(points[1], points[2]))
 
