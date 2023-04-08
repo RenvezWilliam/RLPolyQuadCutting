@@ -5,6 +5,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from pickle import *
 import os.path
+import time
 
 import gmsh
 
@@ -698,9 +699,15 @@ if __name__ == '__main__':
     for i in range(1, 31):
         shape.append("shape_" + str(i))
 
+    l = range(100000)
+
+    tps1 = time.clock()
+    random.shuffle(l)
 
     Data = Q_Learning_train_random(4, 100, 10, shape)
 
+    tps2 = time.clock()
+    print("temp d'execution: ", tps2 - tps1, "s")
 
     i = 1
     while os.path.isfile("Data\data_" + str(i) + ".txt"):
@@ -725,3 +732,4 @@ if __name__ == '__main__':
 
     gmsh.write("mesh_gmsh.vtk")
     finalize()
+
