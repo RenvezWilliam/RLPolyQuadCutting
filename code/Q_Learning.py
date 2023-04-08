@@ -3,6 +3,8 @@ from math import *
 from numpy import zeros,array
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
+from pickle import *
+import os.path
 
 import gmsh
 
@@ -147,6 +149,7 @@ def cut(point_tag, face_tag, dir):
     gmsh.model.occ.synchronize()
     return to_infinity
 
+
 def finalize():
     """ Finalize the gmsh call """
     gmsh.fltk.run()
@@ -172,37 +175,81 @@ def print_infos():
     print("Faces ", get_face_tags())
     for f_tag in get_face_tags():
         q = Query()
-        print("Face ", f_tag,", center ", center(f_tag),", and area ", area(f_tag))
+        print("Face ", f_tag, ", center ", center(f_tag), ", and area ", area(f_tag))
         print(" --> curves ", q.get_curves(f_tag))
         print(" --> points ", q.get_corners(f_tag))
 
 
-#===Mes ajouts===#
+# === Mes ajouts === #
 
-def glouton():
-    all_faces_has_four_points = True
-    for f_tag in get_face_tags():
-        q = Query()
-        points = q.get_corners(f_tag)
+def is_a_rectangle(f_tag, print_info=False):
+    q = Query()
 
-        if points != 4:
+    points = q.get_corners(f_tag)
 
-            all_faces_has_four_points = False
+    min_x = point_coordinate(points[0])[0]
+    min_y = point_coordinate(points[0])[1]
+    max_x = point_coordinate(points[0])[0]
+    max_y = point_coordinate(points[0])[1]
 
-            for p in points:
-                for i in range(4):
-                    j = i + 1
-                    if can_cut(p, f_tag, j):
-                        print("success")
-                        print(p, f_tag, j)
+    # Obtiens les valeurs minimums et maximums de x et y
 
-                        cut(p, f_tag, j)
-                        break
-                    break
-                break
+    for p in points:
+        if min_x > point_coordinate(p)[0]:
+            min_x = point_coordinate(p)[0]
+        if min_y > point_coordinate(p)[1]:
+            min_y = point_coordinate(p)[1]
+        if max_x < point_coordinate(p)[0]:
+            max_x = point_coordinate(p)[0]
+        if max_y < point_coordinate(p)[1]:
+            max_y = point_coordinate(p)[1]
 
-    if not all_faces_has_four_points:
-        glouton()
+    # Maintenant qu'on à les valeurs minimums, on regarde si tous les points de la figure contiennent au moins une des
+    # valeurs, si ce n'est pas le cas, ce n'est pas un rectangle.
+
+    if print_info:
+        print("-=-=-= Info =-=-=-")
+        print("f_tag :", f_tag)
+        print("min_x :", min_x)
+        print("min_y :", min_y)
+        print("max_x :", max_x)
+        print("max_y :", max_y)
+        print("------------")
+        for p in points:
+            print("point trouvé à", point_coordinate(p))
+
+    for p in points:
+        if min_x == point_coordinate(p)[0] or min_y == point_coordinate(p)[1] or max_x == point_coordinate(p)[0] or max_y == point_coordinate(p)[1]:
+            continue
+        return False
+
+    return True
+
+
+def is_on_a_face(point, direction, f_tag):
+    q = Query()
+    point_test = None
+    coord = point_coordinate(point)
+    if direction == 1:
+        point_test = (coord[0], coord[1] + 0.5)
+    elif direction == 2:
+        point_test = (coord[0], coord[1] - 0.5)
+    elif direction == 3:
+        point_test = (coord[0] + 0.5, coord[1])
+    elif direction == 4:
+        point_test = (coord[0] - 0.5, coord[1])
+
+    points = q.get_corners(f_tag)
+
+    coords = []
+    for p in points:
+        coords.append(point_coordinate(p))
+
+    point = Point(point_test)
+    polygon = Polygon(coords)
+
+    return polygon.covers(point), polygon.contains(point)
+
 
 def create_shape(file):
     # créer un tableau avec les différents rectangle inscrit sur le fichier et transforme le tout en int
@@ -219,56 +266,48 @@ def create_shape(file):
     del lines
     return fuse(rectangles)
 
-def can_cut(point, f_tag):
-    # En utilisant le point et le f_tag, on cherche à voir s'il y a une curve adjaçant au point dans la même direction.
-    """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
+
+def algo():
+    # Récupère la surface initiale
+    faces = get_face_tags()
+
+    while faces:
+        f = random.choice(faces)  # Prend une face aléatoirement
+        points_candidats = get_cutable_pts(f)  # Récupère les points candidats pour être coupé
+        p = random.choice(points_candidats)  # Récupère un point
+        c = random.choice(can_cut(p, f))  # Récupère une découpe possible
+
+        cut(p, f, c)  # Fait la découpe
+
+        faces = get_all_non_square_faces()
+
+
+def get_all_non_square_faces():
+    values = []
+    faces = get_face_tags()
+    print("-=-=-=-=-=-")
+    for f in faces:
+        print(f, "is a rectangle :", is_a_rectangle(f))
+        if not is_a_rectangle(f):
+            values.append(f)
+    return values
+
+
+def get_cutable_pts(f_tag):
     q = Query()
-    all_curves = q.get_curves(f_tag)
-    c_point = point_coordinate(point)
-    returned_value = []
-    value = []
+    pts_list = q.get_corners(f_tag)
+    values = []
 
-    for c in all_curves:
-        pts = get_end_points(c)
-        cpts1 = point_coordinate(pts[0])
-        cpts2 = point_coordinate(pts[1])
+    for p in pts_list:
+        if can_cut(p, f_tag):
+            values.append(p)
 
-        #   Nord
-        if cpts1[1] > c_point[1] and cpts2[1] > c_point[1] and (
-                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
-            value.append(1)
+    return values
 
-        #   Sud
-        if cpts1[1] < c_point[1] and cpts2[1] < c_point[1] and (
-                cpts1[0] >= c_point[0] >= cpts2[0] or cpts2[0] >= c_point[0] >= cpts1[0]):
-            value.append(2)
 
-        #   Est
-        if cpts1[0] > c_point[0] and cpts2[0] > c_point[0] and (
-                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
-            value.append(3)
-
-        #   Ouest
-        if cpts1[0] < c_point[0] and cpts2[0] < c_point[0] and (
-                cpts1[1] >= c_point[1] >= cpts2[1] or cpts2[1] >= c_point[1] >= cpts1[1]):
-            value.append(4)
-
-    #   Suprimme les doublons
-
-    for v in value:
-        if not v in returned_value:
-            returned_value.append(v)
-
-    for c in all_curves:
-        pts = get_end_points(c)
-        if point == pts[0]:
-            returned_value.remove(get_dir(point, pts[1]))
-        elif point == pts[1]:
-            returned_value.remove(get_dir(point, pts[0]))
-
-    return returned_value
-
-#######################################################
+def launch():
+    algo()
+    print("score =", get_score())
 
 def get_x(point_tag):
     # renvoi la coordoné sur x d'un point
@@ -276,11 +315,13 @@ def get_x(point_tag):
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return x
 
+
 def get_y(point_tag):
     # renvoi la coordoné sur y d'un point
     no_parametrization = []
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return y
+
 
 def get_z(point_tag):
     # renvoi la coordoné sur z d'un point
@@ -288,13 +329,15 @@ def get_z(point_tag):
     [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
     return z
 
-def get_dist(point_tag1, point_tag2):
-    #renvoi la distance entre 2 points
 
-    return sqrt((get_x(point_tag1)-get_x(point_tag2))**2 + (get_y(point_tag1)-get_y(point_tag2))**2)
+def get_dist(point_tag1, point_tag2):
+    # renvoi la distance entre 2 points
+
+    return sqrt((get_x(point_tag1) - get_x(point_tag2)) ** 2 + (get_y(point_tag1) - get_y(point_tag2)) ** 2)
+
 
 def get_dir(point_tag1, point_tag2):
-    #renvoi la direction d'un pooint 2 par rapport a un point 1
+    # renvoi la direction d'un pooint 2 par rapport a un point 1
     """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
 
     no_parametrization = []
@@ -317,458 +360,303 @@ def get_dir(point_tag1, point_tag2):
 
     return False
 
-"""def get_nb_summit(f_tag):
+
+def get_score():
     q = Query()
-    points = q.get_corners(f_tag)
-    curve = {}
-    points2 = points
+    ratio = 0
+    for f_tag in get_face_tags():
+        points = q.get_corners(f_tag)
 
-    for point in points:
-        curve[get_x(point)] = 1
-        curve[get_y(point)] = 1
+        ratio = ratio + abs(get_dist(points[0], points[1]) - get_dist(points[1], points[2]))
 
-    return len(curve)"""
+    ratio = ratio / len(get_face_tags())
 
-def get_nb_summit(f_tag):
+    return ratio
+
+
+def can_cut(point, f_tag):
+    dir = []
+    for i in range(4):
+        j = i + 1
+        if is_on_a_face(point, j, f_tag)[1]:
+            dir.append(j)
+    return dir
+
+def get_ref_point(point, ListFace, c):
+
+    """
+    revoie a un tableaux contenant:
+
+        - avec longueur = longueur du rectangle englobant toute les face de Face et largeur = largeur du rectangle englobant toute les face de ListFace
+                si longueur  > largeur => 1;  si longueur  < largeur => 2;    si longueur  = largeur => 3
+
+        - liste des directions ou il est possible de couper
+
+        - direction du centre fonction center
+    """
+    q = Query()
+    ref = []
+    FinalRef = ""
+    l = get_encompassing(ListFace)
+    Face = None
+
+    if l[0] == l[1]:
+        ref.append(3)
+    elif l[0] < l[1]:
+        ref.append(2)
+    else:
+        ref.append(1)
+
+    for f in ListFace:
+        if Face != None:
+            break
+        for p in q.get_corners(f):
+            if p == point:
+                Face = f
+                break
+    ref.append(can_cut(point, Face))
+
+    Point_x = get_x(point)
+    Point_y = get_y(point)
+
+    dir = []
+
+    if c[1] > Point_y:
+        dir.append(1)
+
+    if Point_y > c[1]:
+        dir.append(2)
+
+    if c[0] > Point_x:
+        dir.append(3)
+
+    if Point_x > c[0]:
+        dir.append(4)
+
+    ref.append(dir)
+
+    for r in ref:
+        FinalRef = FinalRef + str(r) + "/"
+
+    return FinalRef
+
+def get_encompassing(ListFace):
+
+    """
+    Renvoie la longeur et la largeur du rectangle englobant toute les face de ListFace
+    """
+
+    if len(ListFace) == 0:
+        return False
 
     q = Query()
-    all_curves = q.get_curves(f_tag)
-    points = q.get_corners(f_tag)
+    point = q.get_corners(ListFace[0])[0]
+    Min_x = get_x(point)
+    Min_y = get_y(point)
+    Max_x = get_x(point)
+    Max_y = get_y(point)
 
-    for p1 in points:
-        PointsValide = q.get_corners(f_tag)
-        PointsValide.remove(p1)
-        for p2 in PointsValide:
-            PointsValide.remove(p2)
-            if get_x(p2) == get_x(p1):
-                for p3 in PointsValide:
-                    if get_x(p2) == get_x(p1) == get_x(p3):
-                        if get_x(p1) < get_x(p2) < get_x(p3) or get_x(p1) > get_x(p2) > get_x(p3) :
-                            points.remove(p2)
-                        elif get_x(p2) < get_x(p1) < get_x(p3) or get_x(p2) > get_x(p1) > get_x(p3) :
-                            points.remove(p1)
-                        elif get_x(p1) < get_x(p3) < get_x(p2) or get_x(p1) > get_x(p3) > get_x(p2) :
-                            points.remove(p3)
-            if get_y(p2) == get_y(p1):
-                for p3 in PointsValide:
-                    if get_y(p2) == get_y(p1) == get_y(p3):
-                        if get_y(p1) < get_y(p2) < get_y(p3) or get_y(p1) > get_y(p2) > get_y(p3):
-                            points.remove(p2)
-                        elif get_y(p2) < get_y(p1) < get_y(p3) or get_y(p2) > get_y(p1) > get_y(p3):
-                            points.remove(p1)
-                        elif get_y(p1) < get_y(p3) < get_y(p2) or get_y(p1) > get_y(p3) > get_y(p2):
-                            points.remove(p3)
-    return len(points)
+    for f in ListFace:
+        for p in q.get_corners(f):
+            if get_x(p) > Max_x:
+                Max_x = get_x(p)
+            if get_y(p) > Max_y:
+                Max_y = get_y(p)
+            if get_x(p) < Min_x:
+                Min_x = get_x(p)
+            if get_y(p) < Min_y:
+                Min_y = get_y(p)
 
-def is_on_a_face(point, direction, f_tag):
+    return [Max_x - Min_x, Max_y - Min_y]
 
-    q = Query()
-    test = False
-    point_test = None
-    coord = point_coordinate(point)
-    if direction == 1:
-        point_test = (coord[0], coord[1] + 0.5)
-    elif direction == 2:
-        point_test = (coord[0], coord[1] - 0.5)
-    elif direction == 3:
-        point_test = (coord[0] + 0.5, coord[1])
-    elif direction == 4:
-        point_test = (coord[0] - 0.5, coord[1])
-
-    points = q.get_corners(f_tag)
-
-    coords = []
-    for p in points:
-        coords.append(point_coordinate(p))
-
-    point = Point((point_test))
-    polygon = Polygon(coords)
-
-    return polygon.covers(point), polygon.contains(point)
-
-def Q_Learning_train(RatioMin, NBegal, gain, PoidInitial):
+def Q_Learning_train_random(ScoreMin, NBTest, gain, shape):#RatioMin, NBegal, gain, PoidInitial):
 
     Data = {}
-    CopieData = Data
-    nb = 0
-    continuer = True
-
-    NBProcess = 1
-
     #random.seed(2)
 
     nbbcl = 0
-
-    while continuer:
-        #print("CONTINUER")
-
-        gmsh.clear()
-        print("Clear")
-
-        file_name = "shape.txt"
-        f = open(file_name, "r")
-        ps = create_shape(f)
-        f.close()
-
-        all_faces_has_not_four_points = True
-        q = Query()
-
-        ListeAction = {}
-        ListeRef = []
-        Face = []
-
-        while all_faces_has_not_four_points: #and nbbcl != 10:
-            nbbcl += 1
-            all_faces_has_not_four_points = False
-            Face.clear()
-            i = 0
-            #print(len(get_face_tags()))
-            #séléction aléatoire de la face parmis celle qui n'on pas 4 points en fonction de Data
-
-            for f_tag in get_face_tags():
-
-                NBSummit = get_nb_summit(f_tag)
-                print("face: ", f_tag, ", ", NBSummit, " points")
-                if NBSummit > 4:
-                    Face.append(f_tag)
-
-            if not len(Face) == 0:
-                all_faces_has_not_four_points = True
-
-                #determine la ref corespondant a la situation actuel
-                ref = "Face: "
-                for j in range(len(Face)):
-                    if not len(ref) == 0 :
-                        ref = ref + "#"
-
-                    point = q.get_corners(Face[j])
-                    l = len(point)
-
-
-                    for k in range(l):
-                        if not len(ref) == 0:
-                            ref = ref + "/"
-                        if k == l-1:
-                            ref = ref + str(get_dist(point[k], point[0]))
-                        else:
-                            ref = ref + str(get_dist(point[k], point[k+1]))
-
-                if not ref in Data:
-                        # initialisation des donnees
-
-                    Data[ref] = zeros(len(Face), float)
-
-                    for j in range(len(Face)):
-
-                        Data[ref][j] = PoidInitial
-
-                r = random.randint(0, 99)
-                j = 0
-                points = None
-                sum = 0
-
-                for d in Data[ref]:
-                    sum = sum + d
-
-                for k in range(len(Face)):
-                    j = j + ((Data[ref][k]/sum) * 100)
-
-                    if r < j:
-                        points = q.get_corners(Face[k])
-                        print("selection face: ", Face[k])
-                        ListeAction[ref] = k
-                        f_tag = Face[k]
-                        ListeRef.append(ref)
-                        break
-
-
-                if len(points) == 0:
-                    print("erreur lors de la selection de la face")
-
-                #selection aléatoire du point en fonction de Data
-
-                l = len(points)
-                ref = "points: "
-
-                for k in range(l):
-                    if not len(ref) == 0:
-                        ref = ref + "/"
-                    if k == l-1:
-                        ref = ref + str(get_dir(points[k], points[0])) + "/" + str(get_dist(points[k], points[0]))
-                    else:
-                        ref = ref + str(get_dir(points[k], points[k+1])) + "/" + str(get_dist(points[k], points[k+1]))
-
-                # i apartien a lensemble des segement reliée a l'un des points A REMPLIR direction segment 1 / taille segment 1 / ... / direction segment i / taille segment i
-
-                if not ref in Data:
-                    #taille = len(points)
-                    Data[ref] = []  #zeros(taille, float)
-                    for i in range(len(points)):   #range(taille):
-                        Data[ref].append(PoidInitial)
-                print(ref)
-                RefFace = ref
-
-                ############################
-
-                PointValide = []
-                i = 0
-                for p in points:
-                    ref = "Direction :"
-
-                    all_curves = get_edge_tags()
-
-                    for c in all_curves:
-                        pts = get_end_points(c)
-
-                        if p == pts[0]:
-                            ref = ref + str(get_dir(p, pts[1])) + "/" + str(get_dist(p, pts[1]))
-
-                        if p == pts[1]:
-                            ref = ref + str(get_dir(p, pts[0])) + "/" + str(get_dist(p, pts[0]))
-
-                    # si le point ne peux pas être utilisé pour couper passe la broba de tomber dessu a 0 et choisi un autre point
-
-                    if ref in Data:
-                        for d in Data[ref]:
-                            if d != 0:
-                                PointValide.append(p)
-                                continue
-
-                        print("Proba: [", Data[ref][0], ", ", Data[ref][1], ", ", Data[ref][2], ", ", Data[ref][3], "]")
-
-                    else:
-                        PointValide.append(p)
-
-                    if not p in PointValide:
-                        Data[RefFace][i] = 0
-
-                    i += 1
-
-                ############################
-
-                print("nombre de point valide: ", len(PointValide))
-
-                if len(PointValide) >= 1:
-                    p = None
-                    #print("test")
-                    if len(PointValide) == 1:
-                        p = PointValide[0]
-                        print("Séléction du point: ", p)
-                        for i in range(len(points)):
-                            if points[i] == p:
-                                print(i)
-                                break
-                    else:
-                        while not p in PointValide:
-                            r = random.randint(0, 99)
-                            j = 0
-                            sum = 0
-
-                            for d in Data[RefFace]:
-                                sum = sum + d
-
-                            print("somme: ", sum)
-
-                            if sum != 0:
-                                for i in range(len(points)):
-                                    j = j + ((Data[RefFace][i]/sum) * 100)
-                                    pb = Data[RefFace][i]
-
-                                    #print(r, ", ", j)
-                                    if r < j:
-                                        p = points[i]
-                                        print("Séléction du point: ", p)
-                                        break
-                    print(i)
-
-                    ListeAction[RefFace] = i
-                    ListeRef.append(RefFace)
-
-                #   Selection de la Direction
-
-                    ref = "Direction :"
-
-                    all_curves = get_edge_tags()
-
-                    for c in all_curves:
-                        pts = get_end_points(c)
-
-                        if p == pts[0]:
-                            ref = ref + str(get_dir(p, pts[1])) + "/" + str(get_dist(p, pts[1]))
-
-                        if p == pts[1]:
-                            ref = ref + str(get_dir(p, pts[0])) + "/" + str(get_dist(p, pts[0]))
-
-                print(ref)
-                #direction segment 1 (0,1,2,3) / taille segment 1 / direction segment 2 (0,1,2,3) / taille segment 2
-
-                if not ref in Data:
-                    # initialisation des donnees 1 (north), 2 (south), 3 (east), 4 (west)
-                    Data[ref] = [0.0, 0.0, 0.0, 0.0]
-
-                    CanCut = can_cut(p, f_tag)
-                    for var in CanCut:
-                        Data[ref][var-1] = PoidInitial
-
-
-                print("Nombre de cut possible: ", len(CanCut))
-                # cut aléatoirement en fonction des proba renseigner dans Data
-                r = random.randint(0, 99)
-                j = 0
-
-                print("Proba: [", Data[ref][0], ", ", Data[ref][1], ", ", Data[ref][2], ", ", Data[ref][3], "]")
-
-                sum = 0
-
-                for d in Data[ref]:
-                    sum = sum + d
-
-                if sum != 0:
-                    for i in range(4):
-                        j = j + ((Data[ref][i]/sum) * 100)
-                        print(r, " / ", j)
-                        if r < j:
-                            #1 (north), 2 (south), 3 (east), 4 (west)
-
-                            cut(p, f_tag, i+1)
-                            print("cut ", i+1, ", face: ", f_tag)
-                            ListeAction[ref] = i
-                            ListeRef.append(ref)
-                            break
-
-        # calcul ratio résultat et attribution des récompenses
-        ratio = 0
-
-        for f_tag in get_face_tags():
-            points = q.get_corners(f_tag)
-
-            ratio = ratio + abs(get_dist(points[0], points[1]) - get_dist(points[1], points[2]))
-
-        ratio = ratio / len(get_face_tags())
-
-        for ref in ListeRef:
-            if ratio < RatioMin:  # Bonus
-                Data[ref][ListeAction[ref]] = Data[ref][ListeAction[ref]] + gain
-
-            else:  # Malus
-                #print(ref)
-                Data[ref][ListeAction[ref]] = Data[ref][ListeAction[ref]] - gain
-
-
-        #condition continuer
-        continuer = False
-        print("Fin process ", NBProcess)
-        print(nb, ", ", NBegal)
-        NBProcess+=1
-
-        if CopieData == Data:
-            nb+=1
-            if nb == NBegal:
-                continuer = False
-                print("FIN")
-        else:
-            nb=0
-        CopieData = Data
-
-    return Data
-
-
-
-def Q_Learning_Execute(Data):
-
-    all_faces_has_not_four_points = True
     q = Query()
 
-    while all_faces_has_not_four_points:
+    for s in shape:
+        for nb in range(NBTest):
+            gmsh.clear()
+            print("Clear")
 
-        all_faces_has_not_four_points = False
-        Face = [len(get_face_tags())]
-        i = 0
+            file_name = s + ".txt"
+            f = open(file_name, "r")
+            ps = create_shape(f)
+            f.close()
 
-        # séléction aléatoire de la face parmis celle qui n'on pas 4 points en fonction de Data
 
-        for f_tag in get_face_tags():
+            c = center( get_face_tags()[0])
 
-            points = q.get_corners(f_tag)
+            ListeAction = {}
 
-            if points != 4:
-                Face[i] = f_tag
-                i += 1
-        if not len(Face) == 0:
-            all_faces_has_not_four_points = True
-        else:
-            # determine la ref corespondant a la situation actuel
-            for j in range(i):
-                if not len(ref) == 0:
-                    ref = ref + "#"
+            Face = get_all_non_square_faces()
 
-                point = q.get_corners(Face[j])
-                l = len(point)
+            print("Début preocess: ", nb)
 
-                for k in l:
-                    if not len(ref) == 0:
-                        ref = ref + "/"
-                    if k == l:
-                        ref = ref + str(get_dist(point[k], get_dist[0]))
-                    else:
-                        ref = ref + str(get_dist(point[k], get_dist[k + 1]))
+            while len(Face) != 0: #and nbbcl != 10:
+                nbbcl += 1
+                i = 0
 
-            r = random.randint(0, 99)
-            j = 0
+                #print(len(get_face_tags()))
 
-            for k in range(i):
-                j = j + (Data[ref][k] * 100)
-                if r < j:
-                    points = q.get_corners(Face[k])
-                    break
+                #séléction de la face parmis celle qui n'on pas 4 points en fonction de Data
 
-            if len(points) == 0:
-                print("erreur lors de la selection de la face")
-
-            # selection aléatoire du point en fonction de Data
-
-            l = len(points)
-
-            for k in l:
-                if not len(ref) == 0:
-                    ref = ref + "/"
-                if k == l:
-                    ref = ref + str(get_dir(points[k], get_dist[0]), get_dist(points[k], get_dist[0]))
+                #séléction random
+                if len(Face) == 1:
+                    r = 0
                 else:
-                    ref = ref + str(get_dir(points[k], get_dist[0]), get_dist(points[k], get_dist[k + 1]))
+                    r = random.randint(0, (len(Face) - 1))
 
-            # i apartien a lensemble des segement reliée a l'un des points A REMPLIR direction segment 1 / taille segment 1 / ... / direction segment i / taille segment i
+                points = q.get_corners(Face[r])
+                f_tag = Face[r]
 
-            r = random.randint(0, 99)
-            j = 0
+                print(len(Face), " face a découper")
+                print("selection face: ", f_tag)
 
-            for i in range(len(points)):
-                j = j + (Data[ref][i] * 100)
-                if r < j:
-                    p = points[i]
-                    break
+                #selection aléatoire du point
 
-            if i + 1 == len(points):
-                ref = ref + str(get_dir(p, points[i - 1])) + "/" + str(get_dist(p, points[i - 1])) \
-                      + "/" + str(get_dir(p, points[0])) + "/" + str(get_dist(p, points[0]))
-            elif i == 0:
-                ref = ref + str(get_dir(p, points[len(points)])) + "/" + str(get_dist(p, points[len(points)])) \
-                      + "/" + str(get_dir(p, points[i + 1])) + "/" + str(get_dist(p, points[i + 1]))
+                PointValide = []
+
+                for p in points:
+                    if len(can_cut(p, f_tag)) != 0:
+                        PointValide.append(p)
+
+                if len(PointValide) == 1:
+                    r = 0
+                else:
+                    r = random.randint(0, len(PointValide) - 1)
+
+                p = PointValide[r]
+
+                print("selection point: ", p)
+
+                ref = get_ref_point(p, Face, c)
+
+                if not ref in Data:
+                    Data[ref] = [0,0,0,0]
+                if not ref in ListeAction:
+                    ListeAction[ref] = [0,0,0,0]
+
+                #selection de la direction a cut
+
+                CanCut = can_cut(p, f_tag)
+
+                if len(CanCut) == 1:
+                    r = 0
+                else:
+                    r = random.randint(0, len(CanCut) - 1)
+
+                cut(p, f_tag, CanCut[r])
+
+                print("cut: ", CanCut[r])
+
+                ListeAction[ref][CanCut[r] - 1] +=1
+
+                Face = get_all_non_square_faces()
+
+            if get_score() <= ScoreMin:
+
+                print("Gagner, ", get_score(), " < ", ScoreMin)
+
+                for ref in ListeAction.keys():
+                    for i in range(4):
+                        Data[ref][i] += ListeAction[ref][i] * gain
             else:
-                ref = ref + str(get_dir(p, points[i - 1])) + "/" + str(get_dist(p, points[i - 1])) \
-                      + "/" + str(get_dir(p, points[i + 1])) + "/" + str(get_dist(p, points[i + 1]))
 
-            # direction segment 1 (0,1,2,3) / taille segment 1 / direction segment 2 (0,1,2,3) / taille segment 2
+                print("Perdu, ", get_score(), " > ", ScoreMin)
 
-            # cut aléatoirement en fonction des proba renseigner dans Data
-            r = random.randint(0, 99)
-            j = 0
+            print("Fin preocess: ", nb)
+        print("Fin calcul: ", s)
+    return Data
 
+def Q_Learning_execute(Data, shape):
+    gmsh.clear()
+    print("Clear")
+
+    file_name = shape + ".txt"
+    f = open(file_name, "r")
+    ps = create_shape(f)
+    f.close()
+
+    c = center(get_face_tags()[0])
+
+    Face = get_all_non_square_faces()
+
+    while len(Face) != 0:  # and nbbcl != 10:
+        # séléction de la face parmis celle qui n'on pas 4 points en fonction de Data
+
+        # séléction random
+        if len(Face) == 1:
+            r = 0
+        else:
+            r = random.randint(0, (len(Face) - 1))
+
+        points = q.get_corners(Face[r])
+        f_tag = Face[r]
+
+        print(len(Face), " face a découper")
+        print("selection face: ", f_tag)
+
+        # selection aléatoire du point
+
+        PointValide = []
+
+        for p in points:
+            if len(can_cut(p, f_tag)) != 0:
+                PointValide.append(p)
+
+        if len(PointValide) == 1:
+            r = 0
+        else:
+            #selectionne le point dont la somme des poids est la plus élevé
+            MaxSomme = [-1, 0]
+            for p in PointValide:
+                ref = get_ref_point(p, Face, c)
+                if ref in Data:
+                    somme = Data[ref][0] + Data[ref][1] + Data[ref][2] + Data[ref][3]
+
+                    if somme > MaxSomme[1]:
+                        MaxSomme[0] = p
+                        MaxSomme[1] = somme
+            if MaxSomme[0] == -1:
+                r = random.randint(0, len(PointValide) - 1)
+            else:
+                for i in range(len(PointValide)):
+                    if p == MaxSomme[0]:
+                        r = i
+
+        p = PointValide[r]
+
+        print("selection point: ", p)
+
+        ref = get_ref_point(p, Face, c)
+
+        # selection de la direction a cut
+
+        if not ref in Data:
+            CanCut = can_cut(p, f_tag)
+            dir = CanCut[random.randint(0, len(CanCut) - 1)]
+        else:
+            max = 0
+            dir = -1
             for i in range(4):
-                j = j + (Data[ref][i] * 100)
-                if r < j:
-                    cut(get_point_tags(p), f_tag, i)
-                    break
+                if Data[ref][i] > max:
+                    max = Data[ref][i]
+                    dir = i+1
+            if dir == -1:
+                CanCut = can_cut(p, f_tag)
+                dir = CanCut[random.randint(0, len(CanCut) - 1)]
+
+        cut(p, f_tag, dir)
+
+        print("cut: ", dir)
+
+        Face = get_all_non_square_faces()
+
+    print("Fin Execute, score =", get_score())
 
 #######################################################
 
@@ -788,7 +676,7 @@ if __name__ == '__main__':
 
     #RatioMin, NBegal, gain, PoidInitial
 
-    Data = Q_Learning_train(3, 5, 10,50)
+    #Data = Q_Learning_train(3, 5, 10,50)
 
     #Q_Learning_Execute(Data)
 
@@ -799,8 +687,41 @@ if __name__ == '__main__':
 
             print("Point: ", p, " direction: ", can_cut(p, f_tag))"""
 
+    q = Query()
 
+    """file_name = "shape.txt"
+    f = open(file_name, "r")
+    ps = create_shape(f)
+    f.close()"""
+
+    shape = []
+    for i in range(1, 31):
+        shape.append("shape_" + str(i))
+
+
+    Data = Q_Learning_train_random(4, 100, 10, shape)
+
+
+    i = 1
+    while os.path.isfile("Data\data_" + str(i) + ".txt"):
+            i += 1
+
+    f = open("Data\data_" + str(i) , "wb")
+    dump(Data, f)
+    f.close()
+
+    #Q_Learning_execute(Data,"shape")
+
+    #launch()
+
+    """Face = get_all_non_square_faces()
+
+    for f in Face:
+        print("face: ", f)
+        for p in q.get_corners(f):
+            print(p, ", ", can_cut(p, f))"""
+
+    remesh()
 
     gmsh.write("mesh_gmsh.vtk")
     finalize()
-
