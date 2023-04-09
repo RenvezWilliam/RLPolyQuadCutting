@@ -1,6 +1,6 @@
 import random
 from math import *
-from numpy import zeros,array
+import numpy as np
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from pickle import *
@@ -293,7 +293,7 @@ def get_all_non_square_faces():
             values.append(f)
     return values
 
-def get_nb_summit(f_tag):
+def get_taille(f_tag):
     q = Query()
     points = q.get_corners(f_tag)
     curve = {}
@@ -303,7 +303,22 @@ def get_nb_summit(f_tag):
         curve[get_x(point)] = 1
         curve[get_y(point)] = 1
 
-    return len(curve)
+    Max_x = points[0]
+    Max_y = points[0]
+    Min_x = points[0]
+    Min_y = points[0]
+
+    for p in points:
+        if get_x(Max_x) < get_x(p):
+            Max_x = p
+        if get_y(Max_y) < get_y(p):
+            Max_x = p
+        if get_x(Min_x) > get_x(p):
+            Min_x = p
+        if get_y(Min_y) > get_y(p):
+            Min_y = p
+
+    return [get_dist(Max_x, Min_x), get_dist(Max_y, Min_y)]
 
 
 def get_cutable_pts(f_tag):
@@ -377,10 +392,12 @@ def get_dir(point_tag1, point_tag2):
 def get_score():
     q = Query()
     ratio = 0
-    for f_tag in get_face_tags():
-        points = get_nb_summit(f_tag)
 
-        ratio = ratio + abs(get_dist(points[0], points[1]) - get_dist(points[1], points[2]))
+    for f_tag in get_face_tags():
+
+        taille = get_taille(f_tag)
+
+        ratio = ratio + abs(taille[0] - taille[1])
 
     ratio = ratio / len(get_face_tags())
 
@@ -587,8 +604,6 @@ def Q_Learning_train_random(ScoreMin, NBTest, gain, shape):#RatioMin, NBegal, ga
 
 def Q_Learning_execute(Data, shape):
     gmsh.clear()
-    print("Clear")
-
     file_name = shape + ".txt"
     f = open(file_name, "r")
     ps = create_shape(f)
@@ -622,36 +637,44 @@ def Q_Learning_execute(Data, shape):
                 PointValide.append(p)
 
         if len(PointValide) == 1:
-            r = 0
+            p = PointValide[0]
+            ref = get_ref_point(p, Face, c)
+            print("1 point valide")
         else:
             #selectionne le point dont la somme des poids est la plus élevé
-            MaxSomme = [-1, 0]
+            MaxSomme = [-1, 0, ""]
             for p in PointValide:
                 ref = get_ref_point(p, Face, c)
                 if ref in Data:
                     somme = Data[ref][0] + Data[ref][1] + Data[ref][2] + Data[ref][3]
-
+                    print("somme ", somme, " point", p)
                     if somme > MaxSomme[1]:
                         MaxSomme[0] = p
                         MaxSomme[1] = somme
+                        MaxSomme[2] = ref
+                else:
+                    print("ref inconu: ", ref)
             if MaxSomme[0] == -1:
-                r = random.randint(0, len(PointValide) - 1)
-            else:
-                for i in range(len(PointValide)):
-                    if p == MaxSomme[0]:
-                        r = i
 
-        p = PointValide[r]
+                print("séléction aléatoire du point")
+                p = PointValide[random.randint(0, len(PointValide) - 1)]
+                ref = get_ref_point(p, Face, c)
+            else:
+                p = MaxSomme[0]
+                ref = MaxSomme[2]
+
+
 
         print("selection point: ", p)
 
-        ref = get_ref_point(p, Face, c)
+
 
         # selection de la direction a cut
 
         if not ref in Data:
             CanCut = can_cut(p, f_tag)
             dir = CanCut[random.randint(0, len(CanCut) - 1)]
+            print("séléction aléatoire de la direction")
         else:
             max = 0
             dir = -1
@@ -670,6 +693,7 @@ def Q_Learning_execute(Data, shape):
         Face = get_all_non_square_faces()
 
     print("Fin Execute, score =", get_score())
+    return(get_score())
 
 #######################################################
 
@@ -678,70 +702,36 @@ if __name__ == '__main__':
     # first, we initialize the gmsh environment
     initialize()
 
-    # ======================================================
-    # Create a first shape by assembling rectangles
-    # ======================================================
-
-    """ r1 = create_rectangle(0, 0, 10, 10)
-    r2 = create_rectangle(5, 5, 10, 3)
-    r3 = create_rectangle(-5, 0, 7, 2)
-    ps = fuse([r1, r2, r3])"""
-
-    #RatioMin, NBegal, gain, PoidInitial
-
-    #Data = Q_Learning_train(3, 5, 10,50)
-
-    #Q_Learning_Execute(Data)
-
-    """q = Query()
-    for f_tag in get_face_tags():
-
-        for p in q.get_corners(f_tag):
-
-            print("Point: ", p, " direction: ", can_cut(p, f_tag))"""
-
-    q = Query()
-
-    """file_name = "shape.txt"
-    f = open(file_name, "r")
-    ps = create_shape(f)
-    f.close()"""
-
+    #======================================================
+    #   Parti aprentisage
+    #======================================================
     shape = []
     for i in range(1, 31):
         shape.append("shape_" + str(i))
 
-    l = range(100000)
-
-    tps1 = time.clock()
-    random.shuffle(l)
-
     Data = Q_Learning_train_random(4, 100, 10, shape)
 
-    tps2 = time.clock()
-    print("temp d'execution: ", tps2 - tps1, "s")
-
     i = 1
-    while os.path.isfile("Data\data_" + str(i) + ".txt"):
+    while os.path.isfile("Data\data_" + str(i) + ".npy"):
             i += 1
 
-    f = open("Data\data_" + str(i) , "wb")
-    dump(Data, f)
-    f.close()
+    np.save("Data\data_" + str(i) + ".npy", Data)
 
-    #Q_Learning_execute(Data,"shape")
+    # ======================================================
+    #   Parti utilisation
+    # ======================================================
 
-    #launch()
+    """Data = dict(enumerate(np.load("Data\data_" + str(3) + ".npy", allow_pickle='TRUE').flatten(), 1))[1]
 
-    """Face = get_all_non_square_faces()
+    score = 0
 
-    for f in Face:
-        print("face: ", f)
-        for p in q.get_corners(f):
-            print(p, ", ", can_cut(p, f))"""
+    for i in range(31, 41):
+        score += Q_Learning_execute(Data, "shape_" + str(i))
+
+    print("Score moyen: ", score / 10)
 
     remesh()
 
     gmsh.write("mesh_gmsh.vtk")
-    finalize()
+    finalize()"""
 
