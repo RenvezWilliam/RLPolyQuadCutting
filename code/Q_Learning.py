@@ -499,11 +499,11 @@ def get_encompassing(ListFace):
 
     return [Max_x - Min_x, Max_y - Min_y]
 
-def Q_Learning_train_random(ScoreMin, NBTest, gain, shape):#RatioMin, NBegal, gain, PoidInitial):
+def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, PoidInitial):
 
     Data = {}
     #random.seed(2)
-
+    gain = 10
     nbbcl = 0
     q = Query()
 
@@ -608,6 +608,7 @@ def Q_Learning_execute(Data, shape):
     f = open(file_name, "r")
     ps = create_shape(f)
     f.close()
+    q = Query()
 
     c = center(get_face_tags()[0])
 
@@ -695,6 +696,58 @@ def Q_Learning_execute(Data, shape):
     print("Fin Execute, score =", get_score())
     return(get_score())
 
+
+def Search_Param(shape):
+
+    #cherche le RatioMin idéal
+
+    ScoreMin = 9999
+
+    for i in range(30,70):
+        Data = Q_Learning_train_random(i/10, 40, shape)d
+
+        score = 0
+
+        for j in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(j))
+
+        print("Score moyen pour RatioMin = ", i/10, ": ", score / 10)
+        if score < ScoreMin:
+            ScoreMin = score
+            RatioMin = i/10
+    # cherche le NBTest idéal
+    """RatioMin = 5.6
+    ScoreMin = 9999
+
+    for i in range(35, 45):
+        Data = Q_Learning_train_random(RatioMin, i, shape)
+
+        score = 0
+
+        for i in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(i))
+
+        print("Score moyen pour NBTest = ", i, ": ", score / 10)
+        if score < ScoreMin:
+            ScoreMin = score
+            NBTest = i"""
+
+    """for i in range(NBTest-5, NBTest + 5):
+        Data = Q_Learning_train_random(RatioMin, i, shape)
+
+        score = 0,
+
+        for i in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(i))
+
+        print("Score moyen pour NBTest = ", i, ": ", score / 10)
+        if score < ScoreMin:
+            ScoreMin = score
+            NBTest = i"""
+    NBTest = 40
+
+    return [RatioMin, NBTest]
+
 #######################################################
 
 # Press the green button in the gutter to run the script.
@@ -709,13 +762,15 @@ if __name__ == '__main__':
     for i in range(1, 31):
         shape.append("shape_" + str(i))
 
-    Data = Q_Learning_train_random(4, 100, 10, shape)
+    print(Search_Param(shape))
+
+    """Data = Q_Learning_train_random(4, 100, shape)
 
     i = 1
     while os.path.isfile("Data\data_" + str(i) + ".npy"):
             i += 1
 
-    np.save("Data\data_" + str(i) + ".npy", Data)
+    np.save("Data\data_" + str(i) + ".npy", Data)"""
 
     # ======================================================
     #   Parti utilisation
