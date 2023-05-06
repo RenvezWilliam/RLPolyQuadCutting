@@ -5,7 +5,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from pickle import *
 import os.path
-import time
+import datetime
 
 import gmsh
 
@@ -286,39 +286,37 @@ def algo():
 def get_all_non_square_faces():
     values = []
     faces = get_face_tags()
-    print("-=-=-=-=-=-")
+    #print("-=-=-=-=-=-")
     for f in faces:
-        print(f, "is a rectangle :", is_a_rectangle(f))
+        #print(f, "is a rectangle :", is_a_rectangle(f))
         if not is_a_rectangle(f):
             values.append(f)
     return values
 
 def get_taille(f_tag):
     q = Query()
+
     points = q.get_corners(f_tag)
-    curve = {}
-    points2 = points
 
-    for point in points:
-        curve[get_x(point)] = 1
-        curve[get_y(point)] = 1
+    min_x = point_coordinate(points[0])[0]
+    min_y = point_coordinate(points[0])[1]
+    max_x = point_coordinate(points[0])[0]
+    max_y = point_coordinate(points[0])[1]
 
-    Max_x = points[0]
-    Max_y = points[0]
-    Min_x = points[0]
-    Min_y = points[0]
+    # Obtiens les valeurs minimums et maximums de x et y
 
     for p in points:
-        if get_x(Max_x) < get_x(p):
-            Max_x = p
-        if get_y(Max_y) < get_y(p):
-            Max_x = p
-        if get_x(Min_x) > get_x(p):
-            Min_x = p
-        if get_y(Min_y) > get_y(p):
-            Min_y = p
+        if min_x > point_coordinate(p)[0]:
+            min_x = point_coordinate(p)[0]
+        if min_y > point_coordinate(p)[1]:
+            min_y = point_coordinate(p)[1]
+        if max_x < point_coordinate(p)[0]:
+            max_x = point_coordinate(p)[0]
+        if max_y < point_coordinate(p)[1]:
+            max_y = point_coordinate(p)[1]
 
-    return [get_dist(Max_x, Min_x), get_dist(Max_y, Min_y)]
+    #print(f_tag, " : ", max_x, min_x, " | ", max_y, min_y)
+    return [max_x - min_x, max_y - min_y]
 
 
 def get_cutable_pts(f_tag):
@@ -337,35 +335,18 @@ def launch():
     algo()
     print("score =", get_score())
 
-def get_x(point_tag):
-    # renvoi la coordoné sur x d'un point
-    no_parametrization = []
-    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
-    return x
-
-
-def get_y(point_tag):
-    # renvoi la coordoné sur y d'un point
-    no_parametrization = []
-    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
-    return y
-
-
-def get_z(point_tag):
-    # renvoi la coordoné sur z d'un point
-    no_parametrization = []
-    [x, y, z] = gmsh.model.getValue(0, point_tag, no_parametrization)
-    return z
-
 
 def get_dist(point_tag1, point_tag2):
     # renvoi la distance entre 2 points
 
-    return sqrt((get_x(point_tag1) - get_x(point_tag2)) ** 2 + (get_y(point_tag1) - get_y(point_tag2)) ** 2)
+    coordPoint1 = point_coordinate(point_tag1)
+    coordPoint2 = point_coordinate(point_tag2)
+
+    return sqrt((coordPoint1[0] - coordPoint2[0]) ** 2 + (coordPoint1[1] - coordPoint2[1]) ** 2)
 
 
 def get_dir(point_tag1, point_tag2):
-    # renvoi la direction d'un pooint 2 par rapport a un point 1
+    # renvoi la direction d'un point 2 par rapport a un point 1
     """dir = 1 = nord | 2 = sud | 3 = est | 4 = ouest"""
 
     no_parametrization = []
@@ -387,7 +368,6 @@ def get_dir(point_tag1, point_tag2):
         return 4
 
     return False
-
 
 def get_score():
     q = Query()
@@ -412,7 +392,58 @@ def can_cut(point, f_tag):
             dir.append(j)
     return dir
 
-def get_ref_point(point, ListFace, c):
+def get_ref_point(point, ListFace, Face, c):
+
+    """
+    revoie a un tableaux contenant:
+
+        - avec longueur = longueur du rectangle englobant toute les face de Face et largeur = largeur du rectangle englobant toute les face de ListFace
+                si longueur  > largeur => 1;  si longueur  < largeur => 2;    si longueur  = largeur => 3
+
+        - liste des directions ou il est possible de couper
+
+        - direction du centre fonction center
+    """
+    q = Query()
+    ref = []
+    FinalRef = ""
+    l = get_encompassing(ListFace)
+
+    if l[0] == l[1]:
+        ref.append(3)
+    elif l[0] < l[1]:
+        ref.append(2)
+    else:
+        ref.append(1)
+
+    print(point, Face)
+    ref.append(can_cut(point, Face))
+
+    Point_x = point_coordinate(point)[0]
+    Point_y = point_coordinate(point)[1]
+
+    dir = []
+
+    if c[1] > Point_y:
+        dir.append(1)
+
+    if Point_y > c[1]:
+        dir.append(2)
+
+    if c[0] > Point_x:
+        dir.append(3)
+
+    if Point_x > c[0]:
+        dir.append(4)
+
+    ref.append(dir)
+
+    for r in ref:
+        FinalRef = FinalRef + str(r) + "/"
+
+    return FinalRef
+
+def get_ref_point_deterministe(point, ListFace, c):
 
     """
     revoie a un tableaux contenant:
@@ -430,13 +461,6 @@ def get_ref_point(point, ListFace, c):
     l = get_encompassing(ListFace)
     Face = None
 
-    if l[0] == l[1]:
-        ref.append(3)
-    elif l[0] < l[1]:
-        ref.append(2)
-    else:
-        ref.append(1)
-
     for f in ListFace:
         if Face != None:
             break
@@ -446,8 +470,8 @@ def get_ref_point(point, ListFace, c):
                 break
     ref.append(can_cut(point, Face))
 
-    Point_x = get_x(point)
-    Point_y = get_y(point)
+    Point_x = point_coordinate(point)[0]
+    Point_y = point_coordinate(point)[1]
 
     dir = []
 
@@ -481,31 +505,79 @@ def get_encompassing(ListFace):
 
     q = Query()
     point = q.get_corners(ListFace[0])[0]
-    Min_x = get_x(point)
-    Min_y = get_y(point)
-    Max_x = get_x(point)
-    Max_y = get_y(point)
+    Min_x = point_coordinate(point)[0]
+    Min_y = point_coordinate(point)[1]
+    Max_x = point_coordinate(point)[0]
+    Max_y = point_coordinate(point)[1]
 
     for f in ListFace:
         for p in q.get_corners(f):
-            if get_x(p) > Max_x:
-                Max_x = get_x(p)
-            if get_y(p) > Max_y:
-                Max_y = get_y(p)
-            if get_x(p) < Min_x:
-                Min_x = get_x(p)
-            if get_y(p) < Min_y:
-                Min_y = get_y(p)
+            coordP = point_coordinate(p)
+            if coordP[0] > Max_x:
+                Max_x = coordP[0]
+            if coordP[1] > coordP[1]:
+                Max_y = coordP[1]
+            if coordP[0] < Min_x:
+                Min_x = coordP[0]
+            if coordP[1] < Min_y:
+                Min_y = coordP[1]
 
     return [Max_x - Min_x, Max_y - Min_y]
 
-def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, PoidInitial):
+def algo_random():
+    # Récupère la surface initiale
+    faces = get_face_tags()
+
+    while faces:
+        f = random.choice(faces)  # Prend une face aléatoirement
+        points_candidats = get_cutable_pts(f)  # Récupère les points candidats pour être coupé
+        p = random.choice(points_candidats)  # Récupère un point
+        c = random.choice(can_cut(p, f))  # Récupère une découpe possible
+
+        cut(p, f, c)  # Fait la découpe
+
+        faces = get_all_non_square_faces()
+
+def direction_choice(p, f_tag):
+    possibilite_coupes = can_cut(p, f_tag)
+    taille = get_taille(f_tag)
+    if taille[0] < taille[1]:
+        if 3 in possibilite_coupes:
+            return 3
+        if 4 in possibilite_coupes:
+            return 4
+    else:
+        if 1 in possibilite_coupes:
+            return 1
+        if 2 in possibilite_coupes:
+            return 2
+
+    return possibilite_coupes[0]
+
+def algo():
+    # Récupère la surface initiale
+    faces = get_face_tags()
+
+    while faces:
+        f = faces[0]  # Prend une face aléatoirement
+        points_candidats = get_cutable_pts(f)  # Récupère les points candidats pour être coupé
+        p = points_candidats[0]  # Récupère un point
+        c = direction_choice(p, f)  # Récupère une découpe possible
+
+        cut(p, f, c)  # Fait la découpe
+
+        faces = get_all_non_square_faces()
+
+def Q_Learning_train_random(ScoreMin, NBTest, shape, gamma):
 
     Data = {}
+    RefImplemente = {}
     #random.seed(2)
-    gain = 10
     nbbcl = 0
     q = Query()
+    AncienneRef = ""
+
+    alpha = 1
 
     for s in shape:
         for nb in range(NBTest):
@@ -517,10 +589,10 @@ def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, Po
             ps = create_shape(f)
             f.close()
 
-
             c = center( get_face_tags()[0])
 
             ListeAction = {}
+            Bonus = {}
 
             Face = get_all_non_square_faces()
 
@@ -549,10 +621,29 @@ def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, Po
                 #selection aléatoire du point
 
                 PointValide = []
+                PoidsMax = -999999
 
                 for p in points:
                     if len(can_cut(p, f_tag)) != 0:
                         PointValide.append(p)
+
+                        ref = get_ref_point(p, Face, f_tag, c)
+
+                        if not ref in RefImplemente:
+                            RefImplemente[ref] = False
+
+                        if RefImplemente[ref]:
+                            for poids in Data[ref]:
+                                if poids > PoidsMax:
+                                    PoidsMax = poids
+
+
+                if AncienneRef != "" and PoidsMax != -999999:
+                    if not AncienneRef in Bonus:
+                        Bonus[AncienneRef] = [[], [], [], []]
+
+                    print("PoidsMax: ",PoidsMax)
+                    Bonus[AncienneRef][DernierChoix].append(gamma * (PoidsMax - Data[AncienneRef][DernierChoix]))
 
                 if len(PointValide) == 1:
                     r = 0
@@ -563,7 +654,7 @@ def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, Po
 
                 print("selection point: ", p)
 
-                ref = get_ref_point(p, Face, c)
+                ref = get_ref_point(p, Face, f_tag, c)
 
                 if not ref in Data:
                     Data[ref] = [0,0,0,0]
@@ -574,31 +665,46 @@ def Q_Learning_train_random(ScoreMin, NBTest, shape):#RatioMin, NBegal, gain, Po
 
                 CanCut = can_cut(p, f_tag)
 
+                print(p, f_tag)
+
                 if len(CanCut) == 1:
                     r = 0
                 else:
                     r = random.randint(0, len(CanCut) - 1)
 
-                cut(p, f_tag, CanCut[r])
+
 
                 print("cut: ", CanCut[r])
+                print(CanCut)
 
+                if ref == "1/[]/[2, 3]/":
+                    return False
+
+                cut(p, f_tag, CanCut[r])
+                DernierChoix = CanCut[r] - 1
                 ListeAction[ref][CanCut[r] - 1] +=1
-
+                AncienneRef = ref
                 Face = get_all_non_square_faces()
 
             if get_score() <= ScoreMin:
-
+                gain = 1
                 print("Gagner, ", get_score(), " < ", ScoreMin)
-
-                for ref in ListeAction.keys():
-                    for i in range(4):
-                        Data[ref][i] += ListeAction[ref][i] * gain
             else:
-
+                gain = -1
                 print("Perdu, ", get_score(), " > ", ScoreMin)
 
-            print("Fin preocess: ", nb)
+            for ref in ListeAction.keys():
+                RefImplemente[ref] = True
+                for i in range(4):
+                    bonus = 0
+                    if ref in Bonus:
+                        for j in Bonus[ref][i]:
+                            bonus += j
+                    Data[ref][i] += alpha * (ListeAction[ref][i] * gain + bonus)
+                    if alpha * (ListeAction[ref][i] * gain + bonus) != 0:
+                        print("récompense de: ", alpha * (ListeAction[ref][i] * gain + bonus))
+
+            print("Fin preocess: ", nb, " shape_", s)
         print("Fin calcul: ", s)
     return Data
 
@@ -613,23 +719,282 @@ def Q_Learning_execute(Data, shape):
     c = center(get_face_tags()[0])
 
     Face = get_all_non_square_faces()
+    nb = 0
+
+    while len(Face) != 0 and nb < 100:  # and nbbcl != 10:
+        # séléction de la face parmis celle qui n'on pas 4 points en fonction de Data
+        nb +=1
+        Max = []
+
+        for f in Face:
+
+            points = q.get_corners(f)
+            PointValide = []
+            MaxSomme = [-1, -9999, ""]
+
+            for p in points:
+                if len(can_cut(p, f)) != 0:
+                    PointValide.append(p)
+            for p in PointValide:
+                ref = get_ref_point(p, Face, f, c)
+                if ref in Data:
+                    somme = Data[ref][0] + Data[ref][1] + Data[ref][2] + Data[ref][3]
+                    if somme > MaxSomme[1]:
+                        MaxSomme[0] = p
+                        MaxSomme[1] = somme
+                        MaxSomme[2] = ref
+            Max.append(MaxSomme)
+
+        PoidsMax = -9999
+        PMax = -1
+        RefMax = ""
+        FaceMax = 0
+
+        for i in range(len(Face)):
+            if PoidsMax < Max[i][1]:
+                PMax =  Max[i][0]
+                PoidsMax =  Max[i][1]
+                RefMax =  Max[i][2]
+                FaceMax = Face[i]
+
+        if PMax == -1:
+            # séléction random
+            if len(Face) == 1:
+                r = 0
+            else:
+                r = random.randint(0, (len(Face) - 1))
+
+            FaceMax = Face[r]
+
+            points = q.get_corners(Face[r])
+            PointValide = []
+
+            for p in points:
+                if can_cut(p, FaceMax) != []:
+                    PointValide.append(p)
+
+            print("séléction aléatoire")
+
+            if len(PointValide) == 1:
+                PMax = PointValide[0]
+                RefMax = get_ref_point(p, Face, FaceMax, c)
+            else:
+                print(PointValide)
+
+                PMax = PointValide[random.randint(0, len(PointValide) - 1)]
+                RefMax = get_ref_point(p, Face, FaceMax, c)
+
+        print(len(Face), " face a découper")
+        print("selection face: ", FaceMax)
+
+        # selection aléatoire du point
+
+        print("selection point: ", PMax)
+
+        # selection de la direction a cut
+
+        if not RefMax in Data:
+            CanCut = can_cut(PMax, FaceMax)
+            print(CanCut)
+            dir = CanCut[random.randint(0, len(CanCut) - 1)]
+            print("séléction aléatoire de la direction")
+        else:
+            max = -9999
+            dir = -1
+            print(Data[RefMax])
+            print(RefMax)
+            for i in range(4):
+                if Data[RefMax][i] > max and Data[RefMax][i] != 0:
+                    max = Data[RefMax][i]
+                    dir = i+1
+            if dir == -1:
+                CanCut = can_cut(PMax, FaceMax)
+                print("cut aléatoire ", CanCut)
+                dir = CanCut[random.randint(0, len(CanCut) - 1)]
+
+        cut(PMax, FaceMax, dir)
+
+        print("cut: ", dir)
+
+        Face = get_all_non_square_faces()
+
+    print("Fin Execute, score =", get_score())
+
+    if nb == 100:
+        return False
+    return(get_score())
+
+def Search_Param(shape):
+
+    #cherche le RatioMin idéal
+    NBTest = 10
+    Gamma= 0.1
+    RatioMin = 1.8
+
+    ScoreMin = 9999
+
+    """for i in range(30):
+        score = 0
+        Data = Q_Learning_train_random(i/10, NBTest, shape, 0.1)
+        for j in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(j))
+        score = score/10
+        print("Score moyen pour NBTest = ", i/10, ": ", score)
+
+        if score <= ScoreMin:
+            RatioMin = i/10
+            ScoreMin = score
+        print("RatioTest: ", RatioMin)
+
+    print("Selection RatioMin = ", RatioMin)"""
+
+    ScoreMin = 99999
+    for i in range(10):
+        score = 0
+        Data = Q_Learning_train_random(RatioMin, NBTest, shape, i/100)
+        for j in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(j))
+        score = score/10
+        print("Score moyen pour Gamma = ", i/100, ": ", score)
+
+        if score <= ScoreMin:
+            Gamma = i/100
+            ScoreMin = score
+        print("RatioTest: ", Gamma)
+
+    print("Selection Gamma = ", Gamma)
+
+    ScoreMin = 9999
+
+    for i in range(5):
+        score = 0
+        Data = Q_Learning_train_random(RatioMin, i*10, shape, Gamma)
+        for j in range(31, 41):
+            score += Q_Learning_execute(Data, "shape_" + str(j))
+        score = score / 10
+        print("Score moyen pour NBTest = ", i*10, ": ", score)
+
+        if score <= ScoreMin:
+            NBTest = i*10
+            ScoreMin = score
+        print("NBTest: ", NBTest)
+
+    print("Selection NBTest = ", NBTest)
+
+    return [RatioMin, Gamma, NBTest]
+
+def Q_Learning_train_Algo(ScoreMin, NBTest, shape, gamma):
+
+    Data = {}
+    RefImplemente = {}
+    #random.seed(2)
+    gain = 10
+    q = Query()
+    AncienneRef = ""
+    alpha = 1
+    for s in shape:
+        for nb in range(NBTest):
+            gmsh.clear()
+            print("Clear")
+            file_name = s + ".txt"
+            f = open(file_name, "r")
+            ps = create_shape(f)
+            f.close()
+
+            centre = center( get_face_tags()[0])
+
+            ListeAction = {}
+            Bonus = {}
+
+            # Récupère la surface initiale
+            faces = get_face_tags()
+
+            while faces:
+                f = faces[0]  # selection d'une face
+                points_candidats = get_cutable_pts(f)  # Récupère les points candidats pour être coupé
+
+                PoidsMax = -999999
+
+                for p in points_candidats:
+                    ref = get_ref_point_deterministe(p, faces, centre)
+
+                    if not ref in RefImplemente:
+                        RefImplemente[ref] = False
+
+                    if RefImplemente[ref]:
+                        for poids in Data[ref]:
+                            if poids > PoidsMax:
+                                PoidsMax = poids
+
+
+                if AncienneRef != "" and PoidsMax != -999999:
+                    if not AncienneRef in Bonus:
+                        Bonus[AncienneRef] = [[], [], [], []]
+
+                        print(DernierChoix)
+                        Bonus[AncienneRef][DernierChoix].append(gamma * (PoidsMax - Data[AncienneRef][DernierChoix]))
+
+                points_candidats = get_cutable_pts(f)
+                p = points_candidats[0]  # Récupère un point
+                c = direction_choice(p, f)  # Récupère une découpe possible
+
+                ref = get_ref_point_deterministe(p, get_all_non_square_faces(), centre)
+
+                if not ref in Data:
+                    Data[ref] = [0, 0, 0, 0]
+                if not ref in ListeAction:
+                    print("add action ref")
+                    ListeAction[ref] = [0, 0, 0, 0]
+
+                cut(p, f, c)  # Fait la découpe
+
+                DernierChoix = c - 1
+                ListeAction[ref][c - 1] += 1
+                AncienneRef = ref
+
+                faces = get_all_non_square_faces()
+
+        if get_score() <= ScoreMin:
+            gain = 1
+            print("Gagner, ", get_score(), " < ", ScoreMin)
+        else:
+            gain = -1
+            print("Perdu, ", get_score(), " > ", ScoreMin)
+
+        if len(ListeAction) != 0:
+            for ref in ListeAction.keys():
+                RefImplemente[ref] = True
+                for i in range(4):
+                    bonus = 0
+                    if ref in Bonus:
+                        for j in Bonus[ref][i]:
+                            bonus += j
+                    Data[ref][i] += alpha * (ListeAction[ref][i] * gain + bonus)
+                    if alpha * (ListeAction[ref][i] * gain + bonus) != 0:
+                        print("récompense de: ", alpha * (ListeAction[ref][i] * gain + bonus))
+
+        print("Fin preocess: ", nb, " shape_", s)
+
+    return Data
+
+def Q_Learning_execute_Deterministe(Data, shape):
+    gmsh.clear()
+    file_name = shape + ".txt"
+    f = open(file_name, "r")
+    ps = create_shape(f)
+    f.close()
+    q = Query()
+
+    c = center(get_face_tags()[0])
+
+    Face = get_all_non_square_faces()
 
     while len(Face) != 0:  # and nbbcl != 10:
         # séléction de la face parmis celle qui n'on pas 4 points en fonction de Data
 
-        # séléction random
-        if len(Face) == 1:
-            r = 0
-        else:
-            r = random.randint(0, (len(Face) - 1))
+        f_tag = Face[0]  # Prend une face aléatoirement
 
-        points = q.get_corners(Face[r])
-        f_tag = Face[r]
-
-        print(len(Face), " face a découper")
-        print("selection face: ", f_tag)
-
-        # selection aléatoire du point
+        points = q.get_corners(f_tag)
 
         PointValide = []
 
@@ -639,42 +1004,39 @@ def Q_Learning_execute(Data, shape):
 
         if len(PointValide) == 1:
             p = PointValide[0]
-            ref = get_ref_point(p, Face, c)
+            ref = get_ref_point_deterministe(p, Face, c)
             print("1 point valide")
         else:
             #selectionne le point dont la somme des poids est la plus élevé
             MaxSomme = [-1, 0, ""]
             for p in PointValide:
-                ref = get_ref_point(p, Face, c)
+                ref = get_ref_point_deterministe(p, Face, c)
                 if ref in Data:
                     somme = Data[ref][0] + Data[ref][1] + Data[ref][2] + Data[ref][3]
-                    print("somme ", somme, " point", p)
+                    #print("somme ", somme, " point", p)
                     if somme > MaxSomme[1]:
                         MaxSomme[0] = p
                         MaxSomme[1] = somme
                         MaxSomme[2] = ref
-                else:
-                    print("ref inconu: ", ref)
+                """else:
+                    #print("ref inconu: ", ref)"""
             if MaxSomme[0] == -1:
 
-                print("séléction aléatoire du point")
-                p = PointValide[random.randint(0, len(PointValide) - 1)]
-                ref = get_ref_point(p, Face, c)
+                points_candidats = get_cutable_pts(f_tag)  # Récupère les points candidats pour être coupé
+                p = points_candidats[0]  # Récupère un point
+
+                ref = get_ref_point_deterministe(p, Face, c)
             else:
                 p = MaxSomme[0]
                 ref = MaxSomme[2]
 
-
-
         print("selection point: ", p)
-
-
-
         # selection de la direction a cut
 
         if not ref in Data:
             CanCut = can_cut(p, f_tag)
-            dir = CanCut[random.randint(0, len(CanCut) - 1)]
+
+            dir = direction_choice(p, f_tag)
             print("séléction aléatoire de la direction")
         else:
             max = 0
@@ -685,68 +1047,75 @@ def Q_Learning_execute(Data, shape):
                     dir = i+1
             if dir == -1:
                 CanCut = can_cut(p, f_tag)
-                dir = CanCut[random.randint(0, len(CanCut) - 1)]
+                dir = direction_choice(p, f_tag)
 
         cut(p, f_tag, dir)
 
-        print("cut: ", dir)
+        #print("cut: ", dir)
 
         Face = get_all_non_square_faces()
 
-    print("Fin Execute, score =", get_score())
+    #print("Fin Execute, score =", get_score())
     return(get_score())
 
-
-def Search_Param(shape):
+def Search_Param_Deterministe(shape):
 
     #cherche le RatioMin idéal
+    NBTest = 5
+    Gamma= 0.1
+    RatioMin = 2.9
 
     ScoreMin = 9999
 
-    for i in range(30,70):
-        Data = Q_Learning_train_random(i/10, 40, shape)d
-
+    for i in range(30):
         score = 0
-
+        Data = Q_Learning_train_Algo(i/10, NBTest, shape, Gamma)
         for j in range(31, 41):
-            score += Q_Learning_execute(Data, "shape_" + str(j))
+            score += Q_Learning_execute_Deterministe(Data, "shape_" + str(j))
+        score = score/10
+        print("Score moyen pour NBTest = ", i/10, ": ", score)
 
-        print("Score moyen pour RatioMin = ", i/10, ": ", score / 10)
-        if score < ScoreMin:
-            ScoreMin = score
+        if score <= ScoreMin:
             RatioMin = i/10
-    # cherche le NBTest idéal
-    """RatioMin = 5.6
+            ScoreMin = score
+        print("RatioTest: ", RatioMin)
+
+    print("Selection RatioMin = ", RatioMin)
+
+    ScoreMin = 99999
+    for i in range(30):
+        score = 0
+        Data = Q_Learning_train_Algo(RatioMin, NBTest, shape, i/10)
+        for j in range(31, 41):
+            score += Q_Learning_execute_Deterministe(Data, "shape_" + str(j))
+        score = score/10
+        print("Score moyen pour NBTest = ", i/10, ": ", score)
+
+        if score <= ScoreMin:
+            Gamma = i/10
+            ScoreMin = score
+        print("RatioTest: ", Gamma)
+
+    print("Selection Gamma = ", Gamma)
+
     ScoreMin = 9999
 
-    for i in range(35, 45):
-        Data = Q_Learning_train_random(RatioMin, i, shape)
-
+    for i in range(1,10):
         score = 0
+        Data = Q_Learning_train_Algo(RatioMin, i, shape, Gamma)
+        for j in range(31, 41):
+            score += Q_Learning_execute_Deterministe(Data, "shape_" + str(j))
+        score = score / 10
+        print("Score moyen pour NBTest = ", i*10, ": ", score)
 
-        for i in range(31, 41):
-            score += Q_Learning_execute(Data, "shape_" + str(i))
-
-        print("Score moyen pour NBTest = ", i, ": ", score / 10)
-        if score < ScoreMin:
+        if score <= ScoreMin:
+            NBTest = i*10
             ScoreMin = score
-            NBTest = i"""
+        print("NBTest: ", NBTest)
 
-    """for i in range(NBTest-5, NBTest + 5):
-        Data = Q_Learning_train_random(RatioMin, i, shape)
+    print("Selection NBTest = ", NBTest)
 
-        score = 0,
-
-        for i in range(31, 41):
-            score += Q_Learning_execute(Data, "shape_" + str(i))
-
-        print("Score moyen pour NBTest = ", i, ": ", score / 10)
-        if score < ScoreMin:
-            ScoreMin = score
-            NBTest = i"""
-    NBTest = 40
-
-    return [RatioMin, NBTest]
+    return [RatioMin, Gamma, NBTest]
 
 #######################################################
 
@@ -755,38 +1124,62 @@ if __name__ == '__main__':
     # first, we initialize the gmsh environment
     initialize()
 
+    shape = []
+    for i in range(1, 41):
+        shape.append("shape_" + str(i))
+
+    # ======================================================
+    #   Recherche paramètre optimaux
+    # ======================================================
+
+    """start = now = datetime.datetime.now()
+
+    print(Search_Param_Deterministe(shape))
+
+    end = now = datetime.datetime.now()
+
+    print("la recherche a duré ", end - start)"""
+
     #======================================================
     #   Parti aprentisage
     #======================================================
-    shape = []
-    for i in range(1, 31):
-        shape.append("shape_" + str(i))
 
-    print(Search_Param(shape))
+    score = 2
 
-    """Data = Q_Learning_train_random(4, 100, shape)
+    start = now = datetime.datetime.now()
 
-    i = 1
-    while os.path.isfile("Data\data_" + str(i) + ".npy"):
-            i += 1
 
-    np.save("Data\data_" + str(i) + ".npy", Data)"""
+    Data = Q_Learning_train_random(1.5 , 100, shape,0.02)
+    #Data = Q_Learning_train_Algo(1.8, 5, shape, 0.46)
+
+    #print(Search_Param(shape))
+
+    end = now = datetime.datetime.now()
+
 
     # ======================================================
     #   Parti utilisation
     # ======================================================
 
-    """Data = dict(enumerate(np.load("Data\data_" + str(3) + ".npy", allow_pickle='TRUE').flatten(), 1))[1]
+    """Data = dict(enumerate(np.load("Data\data_" + str(1) + ".npy", allow_pickle='TRUE').flatten(), 1))[1]
+    print(Data)
+    score = 0"""
 
-    score = 0
+    """for i in range(31, 42):
+    
+        score += Q_Learning_execute(Data, "shape_" + str(i) )"""
+    """score = Q_Learning_execute(Data, "shape_11")
+    print("Score: ", score)
 
-    for i in range(31, 41):
-        score += Q_Learning_execute(Data, "shape_" + str(i))
-
-    print("Score moyen: ", score / 10)
-
+    print(len(Data))
+    print("la recherche a duré ", end - start)
     remesh()
 
-    gmsh.write("mesh_gmsh.vtk")
-    finalize()"""
+    i = 1"""
+    """while os.path.isfile("Data\data_" + str(i) + ".npy"):
+        i += 1"""
 
+    np.save("Data\data_" + str(i) + ".npy", Data)
+    print("la recherche a duré ", end - start)
+    gmsh.write("mesh_gmsh.vtk")
+    finalize()
