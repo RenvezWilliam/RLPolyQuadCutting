@@ -1125,7 +1125,7 @@ if __name__ == '__main__':
     initialize()
 
     shape = []
-    for i in range(1, 41):
+    for i in range(1, 31):
         shape.append("shape_" + str(i))
 
     # ======================================================
@@ -1168,7 +1168,7 @@ if __name__ == '__main__':
     """for i in range(31, 42):
     
         score += Q_Learning_execute(Data, "shape_" + str(i) )"""
-    """score = Q_Learning_execute(Data, "shape_11")
+    """score = Q_Learning_execute(Data, "shape_31")
     print("Score: ", score)
 
     print(len(Data))
